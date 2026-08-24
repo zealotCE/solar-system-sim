@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+
+@theme inline {
+  --font-sans: 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif;
+  --font-display: 'Orbitron', 'Noto Sans SC', system-ui, sans-serif;
+  --color-background: #02060f;
+  --color-foreground: #f8fafc;
+  --color-primary: #fbbf24;
+  --radius: 0.9rem;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: #02060f;
+  color: #f8fafc;
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.space-vignette {
+  background:
+    radial-gradient(ellipse at center, transparent 35%, rgba(2, 6, 15, 0.42) 100%),
+    linear-gradient(180deg, rgba(2, 6, 15, 0.18), transparent 18%, transparent 78%, rgba(2, 6, 15, 0.45));
+}
+
+.planet-label {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(8, 12, 24, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+}
+
+.planet-label-active {
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.45);
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.28);
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-down {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+canvas {
+  display: block;
+}
