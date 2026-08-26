@@ -1,9 +1,13 @@
+import { icrfToEclipticAu, simTimeToJd } from './ephemeris'
 import {
   AU_UNITS,
+  KM_PER_AU,
   PLANETS,
+  eclipticToScene,
   getKeplerPosition,
-  getMoonSystemFactor,
+  getPlanetHeliocentricAu,
   getPlanetPosition,
+  kmToSceneUnits,
 } from './planets'
 import { HORIZONS_TRAJECTORIES, type HorizonsVectorSample } from './horizonsTrajectories'
 
@@ -12,7 +16,6 @@ export type SpacecraftKind = 'deep-probe' | 'solar-probe' | 'telescope' | 'stati
 /** How faithfully a craft's scene position represents an ephemeris or orbit. */
 export type SpacecraftModelClass =
   | 'horizons-vector-trajectory'
-  | 'horizons-snapshot-linear-projection'
   | 'simplified-keplerian-orbit'
   | 'fixed-l2-representation'
   | 'representative-local-orbit'
@@ -29,19 +32,9 @@ export type SpacecraftProvenance = {
   trajectoryCoverage?: {
     startJdTdb: number
     endJdTdb: number
-    interpolation: 'linear Cartesian state-vector samples; endpoint clamping outside coverage'
+    interpolation: string
     manifest: string
   }
-}
-
-/**
- * Illustrative deep-probe trail waypoint, not a reconstructed historical
- * trajectory. Longitude is an offset from the epoch bearing.
- */
-export type JourneyWaypoint = {
-  au: number
-  lonOffset: number
-  lat: number
 }
 
 export type SpacecraftData = {
@@ -50,7 +43,11 @@ export type SpacecraftData = {
   englishName: string
   shortCode: string
   agency: string
+  /** UTC calendar date on which this craft (or station's first module) launched. */
+  launchDate: string
   launchYear: number
+  /** Maximum deployed physical span in metres, used by strict true-scale rendering. */
+  maxSpanM: number
   status: '在役' | '静默'
   kind: SpacecraftKind
   color: string
@@ -58,16 +55,6 @@ export type SpacecraftData = {
   provenance: SpacecraftProvenance
   velocityKms?: number
   orbitNote?: string
-  /**
-   * Deep-space probes: JPL Horizons heliocentric ecliptic snapshot at
-   * 2026-01-01 (AU/radians), plus an approximate outward AU/year rate.
-   */
-  baseAu?: number
-  auPerYear?: number
-  eclipticLon?: number
-  eclipticLat?: number
-  /** Deep-space probes: illustrative scene trail leading to the epoch point. */
-  journey?: JourneyWaypoint[]
   /** Offline Sun-centered geometric ICRF/TDB Cartesian samples, if available. */
   trajectory?: readonly HorizonsVectorSample[]
   /** Orbiting craft: anchor body plus simplified Kepler elements (scene units). */
@@ -75,6 +62,8 @@ export type SpacecraftData = {
   orbitRadius?: number
   /** Real semi-major axis in AU, used by true-scale mode (sun-anchored craft). */
   trueOrbitAu?: number
+  /** Real semi-major axis around the anchor body in km (true-scale mode). */
+  trueOrbitKm?: number
   /** Orbital period in Julian years (365.25 days). */
   orbitalPeriod?: number
   eccentricity?: number
@@ -85,25 +74,20 @@ export type SpacecraftData = {
 const EARTH = PLANETS.find((planet) => planet.id === 'earth')!
 const JUPITER = PLANETS.find((planet) => planet.id === 'jupiter')!
 
-const HORIZONS_2026_ECLIPTIC: Omit<SpacecraftProvenance, 'caveat'> = {
-  source: 'JPL Horizons',
-  sourceUrl: 'https://ssd.jpl.nasa.gov/horizons/',
-  sourceEpoch: '2026-01-01 TDB',
-  frame: 'heliocentric J2000 ecliptic',
-  modelClass: 'horizons-snapshot-linear-projection',
-}
-
-function horizonsProvenance(samples: readonly HorizonsVectorSample[]): SpacecraftProvenance {
+function horizonsProvenance(
+  samples: readonly HorizonsVectorSample[],
+  epochLabel: string,
+): SpacecraftProvenance {
   return {
     source: 'JPL Horizons VECTORS offline trajectory pack',
     sourceUrl: 'https://ssd.jpl.nasa.gov/horizons/',
-    sourceEpoch: '1977-08-21 to 2030-12-29 TDB (Voyager 2); 2006-01-20 to 2030-12-28 TDB (New Horizons)',
-    frame: 'Sun-centered geometric ICRF; TDB; Cartesian AU (scene maps ICRF Z to vertical)',
+    sourceEpoch: epochLabel,
+    frame: 'Sun-centered geometric ICRF; TDB; Cartesian AU (rendered in the J2000 ecliptic frame)',
     modelClass: 'horizons-vector-trajectory',
-    caveat: 'Positions are linearly interpolated between 30-day JPL Horizons state-vector samples. Dates outside the bundled range clamp to the nearest endpoint; no extrapolation is performed.',
+    caveat: 'Positions use cubic Hermite interpolation (position + velocity) between 30-day JPL Horizons state-vector samples. Dates outside the bundled range clamp to the nearest endpoint; no extrapolation is performed.',
     trajectoryCoverage: {
       startJdTdb: samples[0][0], endJdTdb: samples[samples.length - 1][0],
-      interpolation: 'linear Cartesian state-vector samples; endpoint clamping outside coverage',
+      interpolation: 'cubic Hermite from position + velocity samples; endpoint clamping outside coverage',
       manifest: 'src/data/horizons-provenance.json',
     },
   }
@@ -118,27 +102,16 @@ export const SPACECRAFT: SpacecraftData[] = [
     englishName: 'Voyager 1',
     shortCode: 'V-1',
     agency: 'NASA',
+    launchDate: '1977-09-05',
     launchYear: 1977,
+    // 13 m magnetometer boom plus the ~4 m spacecraft body.
+    maxSpanM: 17,
     status: '在役',
     kind: 'deep-probe',
     color: '#7dd3fc',
-    provenance: {
-      ...HORIZONS_2026_ECLIPTIC,
-      caveat: 'JPL Horizons 2026-01-01 TDB J2000 ecliptic snapshot; the scene holds its epoch bearing and projects distance linearly using an approximate outward AU/year rate. The trail is illustrative, not a reconstructed trajectory.',
-    },
+    provenance: horizonsProvenance(HORIZONS_TRAJECTORIES.voyager1, '1977-09-08 至 2051-01-13 TDB'),
+    trajectory: HORIZONS_TRAJECTORIES.voyager1,
     velocityKms: 17,
-    baseAu: 169.26,
-    auPerYear: 3.57,
-    eclipticLon: 4.4803,
-    eclipticLat: 0.6135,
-    // Illustrative scene trail; it is not a reconstructed Voyager 1 route.
-    journey: [
-      { au: 1, lonOffset: -1.15, lat: 0 },
-      { au: 5.2, lonOffset: -0.5, lat: 0.03 },
-      { au: 9.54, lonOffset: -0.22, lat: 0.14 },
-      { au: 30, lonOffset: -0.05, lat: 0.44 },
-      { au: 80, lonOffset: -0.012, lat: 0.55 },
-    ],
     description:
       '人类飞得最远的造物。1977 年出发，先后飞掠木星与土星，1990 年回望拍下「暗淡蓝点」，2012 年跨过日球层顶进入星际空间。它携带的金唱片仍在替人类向银河致意。',
   },
@@ -148,26 +121,15 @@ export const SPACECRAFT: SpacecraftData[] = [
     englishName: 'Voyager 2',
     shortCode: 'V-2',
     agency: 'NASA',
+    launchDate: '1977-08-20',
     launchYear: 1977,
+    maxSpanM: 17,
     status: '在役',
     kind: 'deep-probe',
     color: '#67e8f9',
-    provenance: horizonsProvenance(HORIZONS_TRAJECTORIES.voyager2),
+    provenance: horizonsProvenance(HORIZONS_TRAJECTORIES.voyager2, '1977-08-21 至 2051-01-11 TDB'),
     trajectory: HORIZONS_TRAJECTORIES.voyager2,
     velocityKms: 15.4,
-    baseAu: 141.71,
-    auPerYear: 3.22,
-    eclipticLon: 5.0731,
-    eclipticLat: -0.6692,
-    // Illustrative scene trail; it is not a reconstructed Voyager 2 route.
-    journey: [
-      { au: 1, lonOffset: -1.5, lat: 0 },
-      { au: 5.2, lonOffset: -0.78, lat: 0.02 },
-      { au: 9.54, lonOffset: -0.48, lat: 0.03 },
-      { au: 19.19, lonOffset: -0.24, lat: 0.02 },
-      { au: 30.07, lonOffset: -0.1, lat: -0.1 },
-      { au: 72, lonOffset: -0.02, lat: -0.62 },
-    ],
     description:
       '唯一造访过全部四颗巨行星的探测器：木星、土星、天王星、海王星的许多细节都由它首次揭示。2018 年进入星际空间，正朝着黄道面以南的深空远去。',
   },
@@ -177,26 +139,16 @@ export const SPACECRAFT: SpacecraftData[] = [
     englishName: 'Pioneer 10',
     shortCode: 'P-10',
     agency: 'NASA',
+    launchDate: '1972-03-02',
     launchYear: 1972,
+    // 6.6 m magnetometer boom to the opposite deployed RTG structure.
+    maxSpanM: 8.5,
     status: '静默',
     kind: 'deep-probe',
     color: '#94a3b8',
-    provenance: {
-      ...HORIZONS_2026_ECLIPTIC,
-      caveat: 'JPL Horizons 2026-01-01 TDB J2000 ecliptic snapshot; the scene holds its epoch bearing and projects distance linearly using an approximate outward AU/year rate. The trail is illustrative, not a reconstructed trajectory.',
-    },
+    provenance: horizonsProvenance(HORIZONS_TRAJECTORIES.pioneer10, '1972-03-04 至 2049-12-24 TDB'),
+    trajectory: HORIZONS_TRAJECTORIES.pioneer10,
     velocityKms: 12,
-    baseAu: 140.06,
-    auPerYear: 2.5,
-    eclipticLon: 1.3992,
-    eclipticLat: 0.0521,
-    // Illustrative scene trail; it is not a reconstructed Pioneer 10 route.
-    journey: [
-      { au: 1, lonOffset: -0.85, lat: 0 },
-      { au: 2.8, lonOffset: -0.52, lat: 0.005 },
-      { au: 5.2, lonOffset: -0.28, lat: 0.012 },
-      { au: 45, lonOffset: -0.04, lat: 0.04 },
-    ],
     description:
       '第一个穿越小行星带、第一个飞掠木星的探测器。2003 年信号彻底消失，如今静默地飞向金牛座毕宿五方向——抵达那里还需要约两百万年。',
   },
@@ -206,24 +158,15 @@ export const SPACECRAFT: SpacecraftData[] = [
     englishName: 'New Horizons',
     shortCode: 'NH',
     agency: 'NASA',
+    launchDate: '2006-01-19',
     launchYear: 2006,
+    maxSpanM: 2.7,
     status: '在役',
     kind: 'deep-probe',
     color: '#c4b5fd',
-    provenance: horizonsProvenance(HORIZONS_TRAJECTORIES.newhorizons),
+    provenance: horizonsProvenance(HORIZONS_TRAJECTORIES.newhorizons, '2006-01-20 至 2049-12-30 TDB'),
     trajectory: HORIZONS_TRAJECTORIES.newhorizons,
     velocityKms: 13.8,
-    baseAu: 63.58,
-    auPerYear: 2.87,
-    eclipticLon: 5.0328,
-    eclipticLat: 0.0348,
-    // Illustrative scene trail; it is not a reconstructed New Horizons route.
-    journey: [
-      { au: 1, lonOffset: -0.65, lat: 0 },
-      { au: 5.2, lonOffset: -0.32, lat: 0.01 },
-      { au: 32.9, lonOffset: -0.06, lat: -0.025 },
-      { au: 44.4, lonOffset: -0.03, lat: -0.03 },
-    ],
     description:
       '2015 年飞掠冥王星，传回心形冰原的著名影像；2019 年又造访柯伊伯带天体「天涯海角」。目前正穿越柯伊伯带外缘，继续研究太阳风与深空尘埃。',
   },
@@ -233,7 +176,9 @@ export const SPACECRAFT: SpacecraftData[] = [
     englishName: 'Parker Solar Probe',
     shortCode: 'PSP',
     agency: 'NASA',
+    launchDate: '2018-08-12',
     launchYear: 2018,
+    maxSpanM: 3,
     status: '在役',
     kind: 'solar-probe',
     color: '#fb923c',
@@ -263,7 +208,9 @@ export const SPACECRAFT: SpacecraftData[] = [
     englishName: 'James Webb Space Telescope',
     shortCode: 'JWST',
     agency: 'NASA / ESA / CSA',
+    launchDate: '2021-12-25',
     launchYear: 2021,
+    maxSpanM: 21.2,
     status: '在役',
     kind: 'telescope',
     color: '#fbbf24',
@@ -286,7 +233,9 @@ export const SPACECRAFT: SpacecraftData[] = [
     englishName: 'Juno',
     shortCode: 'JN',
     agency: 'NASA',
+    launchDate: '2011-08-05',
     launchYear: 2011,
+    maxSpanM: 20,
     status: '在役',
     kind: 'orbiter',
     color: '#fda4af',
@@ -300,6 +249,8 @@ export const SPACECRAFT: SpacecraftData[] = [
     },
     anchor: 'jupiter',
     orbitRadius: 3.4,
+    // ~53-day science orbit semi-major axis (perijove skims the cloud tops).
+    trueOrbitKm: 4_090_000,
     orbitalPeriod: 0.145,
     eccentricity: 0.42,
     inclination: 1.05,
@@ -315,7 +266,9 @@ export const SPACECRAFT: SpacecraftData[] = [
     englishName: 'Hubble Space Telescope',
     shortCode: 'HST',
     agency: 'NASA / ESA',
+    launchDate: '1990-04-24',
     launchYear: 1990,
+    maxSpanM: 13.2,
     status: '在役',
     kind: 'telescope',
     color: '#a5b4fc',
@@ -330,6 +283,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     velocityKms: 7.6,
     anchor: 'earth',
     orbitRadius: 0.78,
+    trueOrbitKm: 6911, // ~540 km altitude above Earth's 6371 km radius
     orbitalPeriod: 0.0001806, // ~95 minutes
     inclination: 0.5,
     phase: 1.1,
@@ -343,7 +297,9 @@ export const SPACECRAFT: SpacecraftData[] = [
     englishName: 'International Space Station',
     shortCode: 'ISS',
     agency: 'NASA / Roscosmos 等',
+    launchDate: '1998-11-20',
     launchYear: 1998,
+    maxSpanM: 110,
     status: '在役',
     kind: 'station',
     color: '#e2e8f0',
@@ -358,6 +314,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     velocityKms: 7.66,
     anchor: 'earth',
     orbitRadius: 0.7,
+    trueOrbitKm: 6791, // ~420 km altitude
     orbitalPeriod: 0.0001762, // ~92.7 minutes
     inclination: 0.9,
     phase: 3.3,
@@ -371,7 +328,9 @@ export const SPACECRAFT: SpacecraftData[] = [
     englishName: 'Tiangong Space Station',
     shortCode: 'TG',
     agency: 'CMSA',
+    launchDate: '2021-04-29',
     launchYear: 2021,
+    maxSpanM: 55,
     status: '在役',
     kind: 'station',
     color: '#f87171',
@@ -386,6 +345,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     velocityKms: 7.68,
     anchor: 'earth',
     orbitRadius: 0.64,
+    trueOrbitKm: 6761, // ~390 km altitude
     orbitalPeriod: 0.0001749, // ~92 minutes
     inclination: 0.72,
     phase: 5,
@@ -400,6 +360,15 @@ export function getSpacecraftById(id: string | null): SpacecraftData | null {
   return SPACECRAFT.find((craft) => craft.id === id) ?? null
 }
 
+const UNIX_EPOCH_JD = 2440587.5
+const MS_PER_DAY = 86_400_000
+
+/** Whether the craft physically exists at the current model time. */
+export function isCraftLaunched(craft: SpacecraftData, simTime: number): boolean {
+  const launchJd = Date.parse(`${craft.launchDate}T00:00:00Z`) / MS_PER_DAY + UNIX_EPOCH_JD
+  return simTimeToJd(simTime) >= launchJd
+}
+
 export type CraftModifiers = {
   orbitScale?: number
   eccentricityScale?: number
@@ -408,18 +377,11 @@ export type CraftModifiers = {
   trueScale?: boolean
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value))
-}
-
 /** Live heliocentric distance in AU for deep-space probes. */
 export function getCraftLiveAu(craft: SpacecraftData, simTime: number): number {
-  if (craft.trajectory) {
-    const [, x, y, z] = getHorizonsSample(craft.trajectory, simTime)
-    return Math.hypot(x, y, z)
-  }
-  if (craft.baseAu === undefined) return 0
-  return craft.baseAu + (craft.auPerYear ?? 0) * simTime
+  if (!craft.trajectory) return 0
+  const [, x, y, z] = getHorizonsSample(craft.trajectory, simTime)
+  return Math.hypot(x, y, z)
 }
 
 const AU_ANCHOR_IDS = [
@@ -443,30 +405,111 @@ const AU_ANCHORS: Array<[number, number]> = [
   }),
 ]
 
-/** Same logarithmic compression the live deep-probe positions use. */
-function deepSpaceRadius(au: number): number {
-  return 78 + Math.log10(Math.max(31, au) / 30) * 26
+/** Fritsch–Carlson/PCHIP tangents for a monotone C1 radial mapping. */
+function buildMonotoneTangents(points: ReadonlyArray<readonly [number, number]>): number[] {
+  const count = points.length
+  const widths = Array.from(
+    { length: count - 1 },
+    (_, index) => points[index + 1][0] - points[index][0],
+  )
+  const slopes = widths.map(
+    (width, index) => (points[index + 1][1] - points[index][1]) / width,
+  )
+  const tangents = new Array<number>(count).fill(0)
+
+  const endpoint = (
+    width: number,
+    adjacentWidth: number,
+    slope: number,
+    adjacentSlope: number,
+  ) => {
+    let tangent =
+      ((2 * width + adjacentWidth) * slope - width * adjacentSlope) /
+      (width + adjacentWidth)
+    if (Math.sign(tangent) !== Math.sign(slope)) tangent = 0
+    else if (
+      Math.sign(slope) !== Math.sign(adjacentSlope) &&
+      Math.abs(tangent) > Math.abs(3 * slope)
+    ) {
+      tangent = 3 * slope
+    }
+    return tangent
+  }
+
+  tangents[0] = endpoint(widths[0], widths[1], slopes[0], slopes[1])
+  for (let index = 1; index < count - 1; index++) {
+    const before = slopes[index - 1]
+    const after = slopes[index]
+    if (before * after <= 0) {
+      tangents[index] = 0
+      continue
+    }
+    const weightBefore = 2 * widths[index] + widths[index - 1]
+    const weightAfter = widths[index] + 2 * widths[index - 1]
+    tangents[index] =
+      (weightBefore + weightAfter) / (weightBefore / before + weightAfter / after)
+  }
+  const last = count - 1
+  tangents[last] = endpoint(
+    widths[last - 1],
+    widths[last - 2],
+    slopes[last - 1],
+    slopes[last - 2],
+  )
+  return tangents
 }
 
+const AU_ANCHOR_TANGENTS = buildMonotoneTangents(AU_ANCHORS)
+const DEEP_SPACE_SOFTENING_AU = 2
+
 /**
- * Maps a real heliocentric distance to a scene radius. Stylized mode walks
- * the handcrafted planet anchors (so flyby waypoints thread the actual orbit
- * rings), bridges past Pluto, and joins the deep-space log compression at
- * ~51 AU where both formulas meet (scene radius 84).
+ * True-scale display ceiling for the interstellar probes: 192 AU keeps
+ * Voyager 1 inside the camera envelope through 2050 while every other body
+ * stays strictly proportional (only distances beyond 192 AU are clamped).
+ */
+export const TRUE_DEEP_SPACE_CAP_AU = 192
+
+/**
+ * Maps a real heliocentric distance to a scene radius. Stylized mode uses a
+ * monotone cubic curve through the handcrafted planet anchors, then a
+ * derivative-matched logarithmic tail beyond Pluto. The old piecewise-linear
+ * bridge flattened between Pluto and 51 AU before abruptly resuming growth,
+ * creating the visible, non-physical "corners" in Voyager trails.
  */
 export function auToSceneRadius(au: number, trueScale: boolean): number {
-  if (trueScale) return Math.min(au * AU_UNITS, 195)
-  if (au >= 51) return deepSpaceRadius(au)
-  const [plutoAu, plutoRadius] = AU_ANCHORS[AU_ANCHORS.length - 1]
+  if (trueScale) return Math.min(au, TRUE_DEEP_SPACE_CAP_AU) * AU_UNITS
+  if (au <= 0) return 0
+
+  const last = AU_ANCHORS.length - 1
+  const [plutoAu, plutoRadius] = AU_ANCHORS[last]
   if (au >= plutoAu) {
-    const t = (au - plutoAu) / (51 - plutoAu)
-    return plutoRadius + (deepSpaceRadius(51) - plutoRadius) * t
+    const delta = au - plutoAu
+    return (
+      plutoRadius +
+      AU_ANCHOR_TANGENTS[last] *
+        DEEP_SPACE_SOFTENING_AU *
+        Math.log1p(delta / DEEP_SPACE_SOFTENING_AU)
+    )
   }
-  for (let i = 1; i < AU_ANCHORS.length; i++) {
-    if (au <= AU_ANCHORS[i][0]) {
-      const [a0, r0] = AU_ANCHORS[i - 1]
-      const [a1, r1] = AU_ANCHORS[i]
-      return r0 + ((au - a0) / (a1 - a0)) * (r1 - r0)
+
+  for (let index = 1; index < AU_ANCHORS.length; index++) {
+    if (au <= AU_ANCHORS[index][0]) {
+      const [a0, r0] = AU_ANCHORS[index - 1]
+      const [a1, r1] = AU_ANCHORS[index]
+      const width = a1 - a0
+      const t = (au - a0) / width
+      const t2 = t * t
+      const t3 = t2 * t
+      const h00 = 2 * t3 - 3 * t2 + 1
+      const h10 = t3 - 2 * t2 + t
+      const h01 = -2 * t3 + 3 * t2
+      const h11 = t3 - t2
+      return (
+        h00 * r0 +
+        h10 * width * AU_ANCHOR_TANGENTS[index - 1] +
+        h01 * r1 +
+        h11 * width * AU_ANCHOR_TANGENTS[index]
+      )
     }
   }
   return plutoRadius
@@ -474,12 +517,14 @@ export function auToSceneRadius(au: number, trueScale: boolean): number {
 
 export type TrailPoint = [number, number, number]
 
-// The simulation's year-zero is 2026-01-01 TDB. State-vector positions are
-// interpolated in Cartesian space, then radially compressed only for display.
-const SIM_EPOCH_JD_TDB = 2461041.5
-
+/**
+ * Interpolated Sun-centered ICRF state at the given simulation time. Uses
+ * cubic Hermite interpolation of position with the bundled velocities, so the
+ * 30-day sampling still reproduces curved flyby arcs faithfully. Outside the
+ * bundled coverage the nearest endpoint is returned (no extrapolation).
+ */
 function getHorizonsSample(samples: readonly HorizonsVectorSample[], simTime: number): HorizonsVectorSample {
-  const jd = SIM_EPOCH_JD_TDB + simTime * 365.25
+  const jd = simTimeToJd(simTime)
   if (jd <= samples[0][0]) return samples[0]
   const last = samples[samples.length - 1]
   if (jd >= last[0]) return last
@@ -492,12 +537,21 @@ function getHorizonsSample(samples: readonly HorizonsVectorSample[], simTime: nu
   }
   const a = samples[low]
   const b = samples[high]
-  const t = (jd - a[0]) / (b[0] - a[0])
+  const h = b[0] - a[0]
+  const t = (jd - a[0]) / h
+  const t2 = t * t
+  const t3 = t2 * t
+  const h00 = 2 * t3 - 3 * t2 + 1
+  const h10 = t3 - 2 * t2 + t
+  const h01 = -2 * t3 + 3 * t2
+  const h11 = t3 - t2
+  const hermite = (index: 1 | 2 | 3) =>
+    h00 * a[index] + h10 * h * a[index + 3] + h01 * b[index] + h11 * h * b[index + 3]
   return [
     jd,
-    a[1] + (b[1] - a[1]) * t,
-    a[2] + (b[2] - a[2]) * t,
-    a[3] + (b[3] - a[3]) * t,
+    hermite(1),
+    hermite(2),
+    hermite(3),
     a[4] + (b[4] - a[4]) * t,
     a[5] + (b[5] - a[5]) * t,
     a[6] + (b[6] - a[6]) * t,
@@ -505,60 +559,64 @@ function getHorizonsSample(samples: readonly HorizonsVectorSample[], simTime: nu
 }
 
 function horizonsSampleToScene(sample: HorizonsVectorSample, modifiers: CraftModifiers): TrailPoint {
-  const [, x, y, z] = sample
+  const [, xIcrf, yIcrf, zIcrf] = sample
+  // Rotate into the ecliptic frame so probes share the planets' reference plane.
+  const [x, y, z] = icrfToEclipticAu(xIcrf, yIcrf, zIcrf)
   const distance = Math.hypot(x, y, z) || 1
   const radius = auToSceneRadius(distance, modifiers.trueScale ?? false) * (modifiers.orbitScale ?? 1)
-  // Three.js uses Y as vertical; retain ICRF X/Y axes in the rendered X/Z plane.
-  return [(x / distance) * radius, (z / distance) * radius, (y / distance) * radius]
+  return eclipticToScene([x / distance, y / distance, z / distance], radius)
 }
 
 /**
- * Illustrative deep-space trail to the 2026 epoch position in scene
- * coordinates. It is not a reconstructed flight path; its last point matches
- * getSpacecraftPosition at simTime 0 so the live segment continues seamlessly.
+ * The reconstructed flight path in scene coordinates: every bundled Horizons
+ * state vector, mapped by the active scale mode.
  */
 export function getDeepProbeTrailWaypoints(
   craft: SpacecraftData,
   modifiers: CraftModifiers = {},
 ): TrailPoint[] {
-  if (craft.trajectory) return craft.trajectory.map((sample) => horizonsSampleToScene(sample, modifiers))
-  if (craft.kind !== 'deep-probe' || !craft.journey?.length) return []
-  const orbitScale = modifiers.orbitScale ?? 1
-  const inclinationScale = modifiers.inclinationScale ?? 1
-  const trueScale = modifiers.trueScale ?? false
-  const finalLon = craft.eclipticLon ?? 0
-  const finalLat = craft.eclipticLat ?? 0
-
-  const waypoints = [
-    ...craft.journey.map((wp) => ({ au: wp.au, lon: finalLon + wp.lonOffset, lat: wp.lat })),
-    { au: craft.baseAu ?? 60, lon: finalLon, lat: finalLat },
-  ]
-
-  return waypoints.map(({ au, lon, lat }) => {
-    const radius = auToSceneRadius(au, trueScale) * orbitScale
-    const clampedLat = clamp(lat * inclinationScale, -1.25, 1.25)
-    const flat = radius * Math.cos(clampedLat)
-    return [flat * Math.cos(lon), radius * Math.sin(clampedLat), flat * Math.sin(lon)]
-  })
+  if (!craft.trajectory) return []
+  return craft.trajectory.map((sample) => horizonsSampleToScene(sample, modifiers))
 }
 
-/**
- * Scene position for a spacecraft. Deep-space probes sit on their real
- * ecliptic bearing with logarithmically compressed distance so they stay
- * inside the visible scene; orbiting craft ride simplified Kepler orbits
- * around their anchor body.
- */
 /** Orbit radius for a sun-anchored craft (Parker), true-scale aware. */
 export function getCraftSunOrbitRadius(craft: SpacecraftData, trueScale: boolean): number {
   if (trueScale && craft.trueOrbitAu) return craft.trueOrbitAu * AU_UNITS
   return craft.orbitRadius ?? 6
 }
 
-export function getSpacecraftPosition(
+/** Strict metres → km → AU → scene conversion for a deployed spacecraft span. */
+export function getCraftPhysicalSpan(craft: SpacecraftData): number {
+  return kmToSceneUnits(craft.maxSpanM / 1000)
+}
+
+/**
+ * Screen-locator framing radius for camera fly-ins. This is deliberately not
+ * the body radius; strict true-scale meshes use getCraftPhysicalSpan(), while
+ * an independent UI marker keeps metre-scale craft discoverable.
+ */
+export function getCraftFocusRadius(craft: SpacecraftData, trueScale: boolean): number {
+  if (craft.kind === 'deep-probe') return trueScale ? 0.012 : 0.55
+  return trueScale ? 0.0008 : 0.2
+}
+
+export type CraftPlacement = {
+  /** Scene position of the anchor body ([0,0,0] for Sun-centered craft). */
+  anchor: [number, number, number]
+  /** Scene offset relative to the anchor. */
+  local: [number, number, number]
+}
+
+/**
+ * Split spacecraft placement: anchor-body position plus local offset. The
+ * scene renders these as nested groups so near-planet craft keep float32
+ * precision even at true-scale distances.
+ */
+export function getSpacecraftPlacement(
   craft: SpacecraftData,
   simTime: number,
   modifiers: CraftModifiers = {},
-): [number, number, number] {
+): CraftPlacement {
   const orbitScale = modifiers.orbitScale ?? 1
   const eccentricityScale = modifiers.eccentricityScale ?? 1
   const inclinationScale = modifiers.inclinationScale ?? 1
@@ -566,26 +624,25 @@ export function getSpacecraftPosition(
   const trueScale = modifiers.trueScale ?? false
   const localScale = Math.max(1, planetScale * 0.92)
 
-  if (craft.kind === 'deep-probe') {
-    if (craft.trajectory) return horizonsSampleToScene(getHorizonsSample(craft.trajectory, simTime), modifiers)
-    // True scale keeps the exact heliocentric distance (capped to stay in view);
-    // stylized mode compresses it logarithmically past Neptune.
-    const radius = auToSceneRadius(getCraftLiveAu(craft, simTime), trueScale) * orbitScale
-    const lat = clamp((craft.eclipticLat ?? 0) * inclinationScale, -1.25, 1.25)
-    const lon = craft.eclipticLon ?? 0
-    const flat = radius * Math.cos(lat)
-    return [flat * Math.cos(lon), radius * Math.sin(lat), flat * Math.sin(lon)]
+  if (craft.kind === 'deep-probe' && craft.trajectory) {
+    return {
+      anchor: [0, 0, 0],
+      local: horizonsSampleToScene(getHorizonsSample(craft.trajectory, simTime), modifiers),
+    }
   }
 
   if (craft.anchor === 'sun') {
-    return getKeplerPosition(
-      getCraftSunOrbitRadius(craft, trueScale) * orbitScale,
-      craft.orbitalPeriod ?? 0.25,
-      simTime,
-      craft.eccentricity ?? 0,
-      (craft.inclination ?? 0) * inclinationScale,
-      craft.phase ?? 0,
-    )
+    return {
+      anchor: [0, 0, 0],
+      local: getKeplerPosition(
+        getCraftSunOrbitRadius(craft, trueScale) * orbitScale,
+        craft.orbitalPeriod ?? 0.25,
+        simTime,
+        craft.eccentricity ?? 0,
+        (craft.inclination ?? 0) * (trueScale ? 1 : inclinationScale),
+        craft.phase ?? 0,
+      ),
+    }
   }
 
   const planetModifiers = { orbitScale, eccentricityScale, inclinationScale, trueScale }
@@ -594,22 +651,80 @@ export function getSpacecraftPosition(
     const [ex, ey, ez] = getPlanetPosition(EARTH, simTime, planetModifiers)
     const length = Math.hypot(ex, ez) || 1
     const offset = trueScale ? 0.01 * AU_UNITS : 1.05 * localScale
-    const lift = trueScale ? 0.005 : 0.14
-    return [ex + (ex / length) * offset, ey + lift, ez + (ez / length) * offset]
+    const lift = trueScale ? 0.0002 : 0.14
+    return { anchor: [ex, ey, ez], local: [(ex / length) * offset, lift, (ez / length) * offset] }
   }
 
-  const anchor = craft.anchor === 'jupiter' ? JUPITER : EARTH
-  const [ax, ay, az] = getPlanetPosition(anchor, simTime, planetModifiers)
-  const localFactor = trueScale ? getMoonSystemFactor(anchor, true) * 1.3 : localScale
-  const [lx, ly, lz] = getKeplerPosition(
-    (craft.orbitRadius ?? 1) * localFactor,
+  const anchorPlanet = craft.anchor === 'jupiter' ? JUPITER : EARTH
+  const anchorPosition = getPlanetPosition(anchorPlanet, simTime, planetModifiers)
+  const localRadius = trueScale
+    ? kmToSceneUnits(craft.trueOrbitKm ?? 7000)
+    : (craft.orbitRadius ?? 1) * localScale
+  return {
+    anchor: anchorPosition,
+    local: getKeplerPosition(
+      localRadius,
+      craft.orbitalPeriod ?? 0.01,
+      simTime,
+      craft.eccentricity ?? 0,
+      craft.inclination ?? 0,
+      craft.phase ?? 0,
+    ),
+  }
+}
+
+/** Absolute scene position (anchor + local offset). */
+export function getSpacecraftPosition(
+  craft: SpacecraftData,
+  simTime: number,
+  modifiers: CraftModifiers = {},
+): [number, number, number] {
+  const { anchor, local } = getSpacecraftPlacement(craft, simTime, modifiers)
+  return [anchor[0] + local[0], anchor[1] + local[1], anchor[2] + local[2]]
+}
+
+/**
+ * Real heliocentric position in AU (J2000 ecliptic) for live readouts.
+ * Horizons craft use the trajectory pack; anchored craft combine their
+ * anchor's ephemeris with the (simplified) local orbit at physical scale.
+ */
+export function getCraftHeliocentricAu(
+  craft: SpacecraftData,
+  simTime: number,
+): [number, number, number] {
+  if (craft.trajectory) {
+    const [, x, y, z] = getHorizonsSample(craft.trajectory, simTime)
+    return icrfToEclipticAu(x, y, z)
+  }
+  if (craft.anchor === 'sun') {
+    const [kx, ky, kz] = getKeplerPosition(
+      craft.trueOrbitAu ?? 0.5,
+      craft.orbitalPeriod ?? 0.25,
+      simTime,
+      craft.eccentricity ?? 0,
+      craft.inclination ?? 0,
+      craft.phase ?? 0,
+    )
+    // getKeplerPosition returns scene-axis order [x, vertical, y].
+    return [kx, kz, ky]
+  }
+  if (craft.anchor === 'earth-l2') {
+    const [ex, ey, ez] = getPlanetHeliocentricAu('earth', simTime)
+    const length = Math.hypot(ex, ey) || 1
+    return [ex + (ex / length) * 0.01, ey + (ey / length) * 0.01, ez]
+  }
+  const anchorId = craft.anchor === 'jupiter' ? 'jupiter' : 'earth'
+  const [px, py, pz] = getPlanetHeliocentricAu(anchorId, simTime)
+  const radiusAu = (craft.trueOrbitKm ?? 7000) / KM_PER_AU
+  const [kx, ky, kz] = getKeplerPosition(
+    radiusAu,
     craft.orbitalPeriod ?? 0.01,
     simTime,
     craft.eccentricity ?? 0,
     craft.inclination ?? 0,
     craft.phase ?? 0,
   )
-  return [ax + lx, ay + ly, az + lz]
+  return [px + kx, py + kz, pz + ky]
 }
 
 const KIND_LABELS: Record<SpacecraftKind, string> = {

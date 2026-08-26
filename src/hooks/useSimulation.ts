@@ -3,39 +3,34 @@ import {
   createElement,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { getMissionStoryEvent, type MissionStoryEvent } from '../data/missionStories'
+import { getSpacecraftById, isCraftLaunched } from '../data/spacecraft'
+import { SIM_TIME_MAX_YEARS, SIM_TIME_MIN_YEARS, utcMsToSimTime } from '../lib/utils'
 
 export type ScenePreset = 'cinematic' | 'observatory' | 'minimal' | 'custom'
-export type StoryEventTimeMode = 'model-time' | 'illustrative'
 
 export type SelectedStoryEvent = {
   storyId: string
   event: MissionStoryEvent
-  /** Historical events before 2026-01-01 are shown without backdating the model. */
-  timeMode: StoryEventTimeMode
 }
 
-const SIMULATOR_EPOCH_UTC = '2026-01-01'
-
-function eventTimeMode(date: string): StoryEventTimeMode {
-  return date < SIMULATOR_EPOCH_UTC ? 'illustrative' : 'model-time'
-}
-
+/** Story events rewind the model to the real calendar date of the event. */
 function eventSimTime(date: string): number {
-  if (eventTimeMode(date) === 'illustrative') return 0
-  const epoch = Date.parse(`${SIMULATOR_EPOCH_UTC}T00:00:00Z`)
   const eventDate = Date.parse(`${date}T00:00:00Z`)
-  return Math.max(0, (eventDate - epoch) / (365.25 * 24 * 60 * 60 * 1000))
+  return clamp(utcMsToSimTime(eventDate), SIM_TIME_MIN_YEARS, SIM_TIME_MAX_YEARS)
 }
 
 export type SimulationState = {
   isPlaying: boolean
   speed: number
+  /** +1 plays forward, −1 rewinds. */
+  timeDirection: 1 | -1
   simTime: number
   simTimeRef: { current: number }
   selectedPlanetId: string | null
@@ -61,9 +56,13 @@ export type SimulationState = {
   selectedStoryEvent: SelectedStoryEvent | null
   togglePlay: () => void
   setSpeed: (value: number) => void
+  setTimeDirection: (value: 1 | -1) => void
   setSimulationTime: (value: number) => void
   stepTime: (days: number) => void
   resetSimulationTime: () => void
+  /** Jumps the model to a UTC timestamp (clamped to the 1950–2050 window). */
+  jumpToDate: (utcMs: number) => void
+  jumpToNow: () => void
   selectPlanet: (id: string | null) => void
   setFollowPlanet: (value: boolean) => void
   setShowOrbits: (value: boolean) => void
@@ -97,6 +96,7 @@ function clamp(value: number, min: number, max: number) {
 export function SimulationProvider({ children }: { children: ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(true)
   const [speed, setSpeedState] = useState(80)
+  const [timeDirection, setTimeDirectionState] = useState<1 | -1>(1)
   const [simTime, setSimTime] = useState(0)
   const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(null)
   const [followPlanet, setFollowPlanet] = useState(false)
@@ -129,14 +129,22 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     setSpeedState(Math.min(1000, Math.max(0.01, value)))
   }, [])
 
+  const setTimeDirection = useCallback((value: 1 | -1) => {
+    setTimeDirectionState(value)
+  }, [])
+
   const setSimulationTime = useCallback((value: number) => {
-    const next = Math.max(0, value)
+    const next = clamp(value, SIM_TIME_MIN_YEARS, SIM_TIME_MAX_YEARS)
     simTimeRef.current = next
     setSimTime(next)
   }, [])
 
   const stepTime = useCallback((days: number) => {
-    const next = Math.max(0, simTimeRef.current + days / 365.25)
+    const next = clamp(
+      simTimeRef.current + days / 365.25,
+      SIM_TIME_MIN_YEARS,
+      SIM_TIME_MAX_YEARS,
+    )
     simTimeRef.current = next
     setSimTime(next)
   }, [])
@@ -146,7 +154,20 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     setSimTime(0)
   }, [])
 
+  const jumpToDate = useCallback(
+    (utcMs: number) => {
+      setSimulationTime(utcMsToSimTime(utcMs))
+    },
+    [setSimulationTime],
+  )
+
+  const jumpToNow = useCallback(() => {
+    setSimulationTime(utcMsToSimTime(Date.now()))
+  }, [setSimulationTime])
+
   const selectPlanet = useCallback((id: string | null) => {
+    const craft = getSpacecraftById(id)
+    if (craft && !isCraftLaunched(craft, simTimeRef.current)) return
     setSelectedPlanetId(id)
     if (id) {
       // Star Walk-style focus: selecting a body locks on and glides the camera in.
@@ -156,6 +177,16 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       setFollowPlanet(false)
     }
   }, [])
+
+  // Rewinding past a launch removes that craft from the scene and releases a
+  // camera lock that would otherwise keep following a non-existent target.
+  useEffect(() => {
+    const craft = getSpacecraftById(selectedPlanetId)
+    if (!craft || isCraftLaunched(craft, simTime)) return
+    // oxlint-disable-next-line react/set-state-in-effect -- model-time validity synchronization
+    setSelectedPlanetId(null)
+    setFollowPlanet(false)
+  }, [selectedPlanetId, simTime])
 
   const markCustom = useCallback(() => setScenePreset('custom'), [])
 
@@ -281,14 +312,15 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     const event = getMissionStoryEvent(storyId, eventId)
     if (!event) return
 
-    const timeMode = eventTimeMode(event.date)
+    // True time travel: the model rewinds to the event's calendar date, so the
+    // planets and the probe stand in their real historical configuration.
     const nextTime = eventSimTime(event.date)
-    // React batches these updates: story selection, target focus, and model time
-    // become one coherent state transition. Pre-epoch history remains illustrative
-    // at the simulator epoch rather than pretending this model has been backdated.
     simTimeRef.current = nextTime
     setSimTime(nextTime)
-    setSelectedStoryEvent({ storyId, event, timeMode })
+    // Keep the historical configuration on screen instead of immediately
+    // racing away at the current playback multiplier.
+    setIsPlaying(false)
+    setSelectedStoryEvent({ storyId, event })
     setSelectedPlanetId(event.focusTargetId)
     setFollowPlanet(true)
     setFocusNonce((value) => value + 1)
@@ -306,6 +338,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     () => ({
       isPlaying,
       speed,
+      timeDirection,
       simTime,
       simTimeRef,
       selectedPlanetId,
@@ -317,10 +350,12 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       showSpacecraft,
       autoRotate: autoRotateState,
       trueScale,
-      planetScale: planetScaleState,
-      orbitScale: orbitScaleState,
-      eccentricityScale: eccentricityScaleState,
-      inclinationScale: inclinationScaleState,
+      // True-scale mode is strictly physical: every shape/size modifier locks
+      // to 1 so radii, orbits, eccentricities, and inclinations stay real.
+      planetScale: trueScale ? 1 : planetScaleState,
+      orbitScale: trueScale ? 1 : orbitScaleState,
+      eccentricityScale: trueScale ? 1 : eccentricityScaleState,
+      inclinationScale: trueScale ? 1 : inclinationScaleState,
       starBrightness: starBrightnessState,
       bloomStrength: bloomStrengthState,
       usePhotoTextures,
@@ -331,9 +366,12 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       selectedStoryEvent,
       togglePlay,
       setSpeed,
+      setTimeDirection,
       setSimulationTime,
       stepTime,
       resetSimulationTime,
+      jumpToDate,
+      jumpToNow,
       selectPlanet,
       setFollowPlanet,
       setShowOrbits,
@@ -360,6 +398,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     [
       isPlaying,
       speed,
+      timeDirection,
       simTime,
       selectedPlanetId,
       followPlanet,
@@ -385,9 +424,12 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       selectedStoryEvent,
       togglePlay,
       setSpeed,
+      setTimeDirection,
       setSimulationTime,
       stepTime,
       resetSimulationTime,
+      jumpToDate,
+      jumpToNow,
       selectPlanet,
       setShowAsteroids,
       setShowEcliptic,

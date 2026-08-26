@@ -6,7 +6,9 @@ import * as THREE from 'three'
 import { PLANETS, SUN, findMoonById, type TextureKind } from '@/data/planets'
 import { getSpacecraftById, type SpacecraftData } from '@/data/spacecraft'
 import { getGlowTexture } from '@/lib/planetTextures'
+import { getCraftModel } from '@/lib/spacecraftModels'
 import { useBodySurface } from '@/lib/textureAssets'
+import { CraftGlbModel } from '@/components/scene/CraftGlbModel'
 import { PlanetRings } from '@/components/scene/PlanetRings'
 
 type BodySpec = {
@@ -46,15 +48,11 @@ const GOLD = {
   color: '#e0a83f',
   metalness: 0.9,
   roughness: 0.32,
-  emissive: '#6d4a10',
-  emissiveIntensity: 0.35,
 }
 const PANEL = {
   color: '#16335c',
   metalness: 0.55,
   roughness: 0.4,
-  emissive: '#1c4f92',
-  emissiveIntensity: 0.4,
 }
 const SHIELD = { color: '#f2ede2', metalness: 0.2, roughness: 0.7 }
 
@@ -260,22 +258,36 @@ function OrbiterModel() {
   )
 }
 
-function CraftModel({ craft }: { craft: SpacecraftData }) {
-  const spinRef = useRef<THREE.Group>(null)
-
-  useFrame((_, delta) => {
-    if (spinRef.current) spinRef.current.rotation.y += delta * 0.32
-  })
-
+function ProceduralCraftModel({ craft }: { craft: SpacecraftData }) {
   let model = <OrbiterModel />
   if (craft.kind === 'deep-probe') model = <DeepProbeModel />
   else if (craft.kind === 'solar-probe') model = <SolarProbeModel />
   else if (craft.kind === 'station') model = <StationModel />
   else if (craft.kind === 'telescope') model = craft.id === 'jwst' ? <WebbModel /> : <TelescopeModel />
+  return model
+}
+
+function CraftModel({ craft }: { craft: SpacecraftData }) {
+  const spinRef = useRef<THREE.Group>(null)
+  const official = getCraftModel(craft.id)
+
+  useFrame((_, delta) => {
+    if (spinRef.current) spinRef.current.rotation.y += delta * 0.32
+  })
 
   return (
     <group ref={spinRef} scale={1.06}>
-      {model}
+      {official ? (
+        // Official NASA 3D Resources model, procedural fallback while loading
+        // or if the bundled file is unavailable.
+        <CraftGlbModel
+          url={official.url}
+          fitRadius={0.92}
+          fallback={<ProceduralCraftModel craft={craft} />}
+        />
+      ) : (
+        <ProceduralCraftModel craft={craft} />
+      )}
       {/* Holographic locator ring */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.66, 0]}>
         <ringGeometry args={[0.66, 0.68, 64]} />
@@ -366,9 +378,19 @@ export function BodyPreview({ bodyId }: { bodyId: string }) {
       camera={{ position: [0, 0.24, 3.5], fov: 34 }}
       gl={{ alpha: true, antialias: true, powerPreference: 'low-power' }}
     >
-      <ambientLight intensity={bodyId === 'sun' ? 0.9 : craft ? 0.55 : 0.16} />
-      <directionalLight position={[2.4, 1.3, 2.2]} intensity={2.6} color="#fff1da" />
-      <pointLight position={[-2.6, -0.8, -1.8]} intensity={1.1} color="#3aa8c9" />
+      {/* Neutral studio lighting: readable metal/foil without implying that
+          spacecraft emit light. The preview canvas has no bloom pass. */}
+      <ambientLight intensity={bodyId === 'sun' ? 0.9 : craft ? 0.34 : 0.16} />
+      <directionalLight
+        position={[2.4, 1.3, 2.2]}
+        intensity={craft ? 1.45 : 2.6}
+        color="#fff1da"
+      />
+      <pointLight
+        position={[-2.6, -0.8, -1.8]}
+        intensity={craft ? 0.28 : 1.1}
+        color="#6aa7c2"
+      />
       {craft ? <CraftModel craft={craft} /> : <PreviewBody id={bodyId} />}
       <OrbitControls
         enableZoom={false}

@@ -48,8 +48,8 @@ function createDustBand(count: number) {
 
   for (let i = 0; i < count; i++) {
     const angle = random() * Math.PI * 2
-    const radius = 185 + random() * 210
-    const thickness = (random() + random() + random() - 1.5) * 22
+    const radius = 440 + random() * 135
+    const thickness = (random() + random() + random() - 1.5) * 34
     positions[i * 3] = Math.cos(angle) * radius
     positions[i * 3 + 1] = thickness
     positions[i * 3 + 2] = Math.sin(angle) * radius
@@ -109,12 +109,12 @@ function createStarPointTexture() {
 }
 
 export function Starfield() {
-  const { starBrightness } = useSimulation()
+  const { starBrightness, trueScale } = useSimulation()
   const faintMaterial = useRef<THREE.PointsMaterial>(null)
   const brightMaterial = useRef<THREE.PointsMaterial>(null)
   const backgroundRef = useRef<THREE.Group>(null)
-  const faint = useMemo(() => createStarShell(8200, 1949, 155, 390), [])
-  const bright = useMemo(() => createStarShell(720, 4107, 150, 340), [])
+  const faint = useMemo(() => createStarShell(8200, 1949, 430, 580), [])
+  const bright = useMemo(() => createStarShell(720, 4107, 425, 560), [])
   const dust = useMemo(() => createDustBand(2800), [])
   const nebula = useMemo(() => createNebulaTexture(), [])
   const starPoint = useMemo(() => createStarPointTexture(), [])
@@ -139,7 +139,7 @@ export function Starfield() {
   })
 
   return (
-    <group ref={backgroundRef} frustumCulled={false}>
+    <group ref={backgroundRef} scale={trueScale ? 2.5 : 1} frustumCulled={false}>
       {milkyWay ? (
         // Galactic plane sits ~60° off the ecliptic, matching the real sky.
         <mesh
@@ -148,21 +148,21 @@ export function Starfield() {
           renderOrder={-101}
           frustumCulled={false}
         >
-          <sphereGeometry args={[430, 56, 36]} />
+          <sphereGeometry args={[620, 56, 36]} />
           <meshBasicMaterial
             map={milkyWay}
             color="#e8edf6"
             side={THREE.BackSide}
             transparent
             opacity={Math.min(1, 0.68 * starBrightness)}
-            depthTest={false}
+            depthTest
             depthWrite={false}
             fog={false}
           />
         </mesh>
       ) : null}
 
-      <sprite position={[-145, 72, -225]} scale={[250, 156, 1]} renderOrder={-100}>
+      <sprite position={[-300, 150, -465]} scale={[520, 324, 1]} renderOrder={-100}>
         <spriteMaterial
           map={nebula}
           color="#7398d2"
@@ -170,7 +170,7 @@ export function Starfield() {
           opacity={0.2 * starBrightness}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
-          depthTest={false}
+          depthTest
           fog={false}
         />
       </sprite>
@@ -189,7 +189,7 @@ export function Starfield() {
           transparent
           opacity={0.65}
           sizeAttenuation={false}
-          depthTest={false}
+          depthTest
           depthWrite={false}
           fog={false}
         />
@@ -209,7 +209,7 @@ export function Starfield() {
           transparent
           opacity={0.88}
           sizeAttenuation={false}
-          depthTest={false}
+          depthTest
           depthWrite={false}
           fog={false}
           blending={THREE.AdditiveBlending}
@@ -229,7 +229,7 @@ export function Starfield() {
           transparent
           opacity={0.32 * starBrightness}
           sizeAttenuation={false}
-          depthTest={false}
+          depthTest
           depthWrite={false}
           fog={false}
         />

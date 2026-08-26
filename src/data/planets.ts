@@ -1,3 +1,5 @@
+import { getPlanetEclipticAu, simTimeToJd } from './ephemeris'
+
 export type TextureKind = 'rocky' | 'gas' | 'ice' | 'star'
 
 export type MoonData = {
@@ -47,30 +49,21 @@ export const PLANET_RADIUS_SCALE = 1
 
 /** True-scale mode: scene units per astronomical unit. */
 export const AU_UNITS = 2.6
-const KM_PER_AU = 1.496e8
-/**
- * Deliberate display magnification for every physical body in true-scale mode.
- * Applying this single factor to the Sun, planets, and moons preserves all
- * diameter ratios; it is not a per-body visibility floor.
- */
-export const TRUE_BODY_MAG = 250
-/** Default `planetScale` used by the rendered planet and moon mesh groups. */
-const DEFAULT_PLANET_SCALE = 1.16
-/**
- * Outer mesh allowance for the rendered body shell (including its normal
- * selection-scale headroom). This is a clearance allowance, not an orbit floor.
- */
-const TRUE_MOON_MESH_SHELL = 1.14
-/** A proportional gap used only when magnified meshes would otherwise touch. */
-const TRUE_MOON_CLEARANCE_RATIO = 0.08
+export const KM_PER_AU = 1.496e8
 
 /** Converts a physical length in kilometres to scene units. */
-export function kmToSceneUnits(km: number, magnification = 1): number {
-  return (km / KM_PER_AU) * AU_UNITS * magnification
+export function kmToSceneUnits(km: number): number {
+  return (km / KM_PER_AU) * AU_UNITS
 }
 
+/**
+ * True-scale mode renders bodies at their literal physical size: radii and
+ * orbital distances share the exact same km→scene mapping with no
+ * magnification. The Sun becomes ~0.012 scene units against Mercury's
+ * ~1.0-unit orbit, exactly as in reality.
+ */
 export function getTrueBodyRadius(diameterKm: number): number {
-  return kmToSceneUnits(diameterKm / 2, TRUE_BODY_MAG)
+  return kmToSceneUnits(diameterKm / 2)
 }
 
 export const SUN = {
@@ -760,42 +753,21 @@ export function getMoonVisualRadius(moon: MoonData, trueScale: boolean): number 
   return trueScale ? getTrueBodyRadius(moon.diameterKm) : moon.radius
 }
 
-/** Legacy local-scale conversion retained for spacecraft's stylized orbit data. */
-export function getMoonSystemFactor(planet: PlanetData, trueScale: boolean): number {
-  if (!trueScale) return 1
-  return getTrueBodyRadius(planet.diameterKm) / planet.radius
-}
-
 /**
- * True-scale moon centres and body radii share the same display magnification,
- * preserving physical ratios (for example, Charon remains about 16 Pluto radii
- * from Pluto's centre). The rendered mesh shell and default planet scale are
- * included only as a contact guard when a physical orbit would intersect a
- * magnified mesh; this is deliberately not a generic large orbit floor.
+ * True-scale moon orbits use the physical semi-major axis directly. Real
+ * satellite orbits never intersect their parent body, so no contact guard is
+ * needed once radii are also physical.
  */
 export function getMoonLocalOrbitRadius(
   moon: MoonData,
-  parent: PlanetData,
+  _parent: PlanetData,
   trueScale: boolean,
-  eccentricity = moon.eccentricity ?? 0,
 ): number {
   if (!trueScale) return moon.orbitRadius
-
-  const physicalSemiMajorAxis = kmToSceneUnits(moon.realOrbitKm, TRUE_BODY_MAG)
-  const parentRadius = getPlanetVisualRadius(parent, true)
-  const moonRadius = getMoonVisualRadius(moon, true)
-  const meshContactDistance =
-    (parentRadius + moonRadius) * DEFAULT_PLANET_SCALE * TRUE_MOON_MESH_SHELL
-  const minimumPeriapsisDistance =
-    meshContactDistance * (1 + TRUE_MOON_CLEARANCE_RATIO)
-  const boundedEccentricity = Math.min(Math.abs(eccentricity), 0.85)
-
-  return Math.max(
-    physicalSemiMajorAxis,
-    minimumPeriapsisDistance / (1 - boundedEccentricity),
-  )
+  return kmToSceneUnits(moon.realOrbitKm)
 }
 
+/** Mean scene orbit radius (used for label/visibility heuristics, not motion). */
 export function getPlanetOrbitRadius(planet: PlanetData, trueScale: boolean): number {
   return trueScale ? planet.realOrbitAu * AU_UNITS : planet.orbitRadius
 }
@@ -857,22 +829,75 @@ export type OrbitModifiers = {
   trueScale?: boolean
 }
 
+/**
+ * Real heliocentric position (J2000 ecliptic, AU) at the given simulation
+ * time, from the JPL approximate-position Keplerian elements (1800–2050).
+ */
+export function getPlanetHeliocentricAu(
+  planetId: string,
+  simTime: number,
+): [number, number, number] {
+  return getPlanetEclipticAu(planetId, simTimeToJd(simTime))
+}
+
+/** Maps an ecliptic-frame vector to scene axes (ecliptic +Z becomes scene up). */
+export function eclipticToScene(
+  vector: [number, number, number],
+  radiusScale: number,
+): [number, number, number] {
+  return [vector[0] * radiusScale, vector[2] * radiusScale, vector[1] * radiusScale]
+}
+
+/**
+ * Scene position of a planet. Angular position (heliocentric longitude,
+ * latitude, and true anomaly timing) is always the real JPL ephemeris value,
+ * so planetary configurations match the sky for any date in 1800–2050.
+ *
+ * True-scale mode maps AU directly to scene units. Stylized mode keeps the
+ * handcrafted orbit spacing: the real radial variation is applied as a ratio
+ * to the stylized ring radius, with the eccentricity / inclination sliders
+ * exaggerating those real deviations rather than inventing fake orbits.
+ */
 export function getPlanetPosition(
   planet: PlanetData,
   simTime: number,
   modifiers: OrbitModifiers = {},
 ): [number, number, number] {
+  const [xAu, yAu, zAu] = getPlanetHeliocentricAu(planet.id, simTime)
+  if (modifiers.trueScale) {
+    return eclipticToScene([xAu, yAu, zAu], AU_UNITS)
+  }
   const orbitScale = modifiers.orbitScale ?? 1
   const eccentricityScale = modifiers.eccentricityScale ?? 1
   const inclinationScale = modifiers.inclinationScale ?? 1
-  return getKeplerPosition(
-    getPlanetOrbitRadius(planet, modifiers.trueScale ?? false) * orbitScale,
-    planet.orbitalPeriod,
-    simTime,
-    planet.eccentricity * eccentricityScale,
-    planet.inclination * inclinationScale,
-    planet.phase,
-  )
+  const distanceAu = Math.hypot(xAu, yAu, zAu) || 1
+  const radialRatio = 1 + (distanceAu / planet.realOrbitAu - 1) * eccentricityScale
+  const radius = planet.orbitRadius * Math.max(0.05, radialRatio) * orbitScale
+  const flat = Math.hypot(xAu, yAu) || 1
+  const latitude = Math.atan2(zAu, flat) * inclinationScale
+  const cosLat = Math.cos(latitude)
+  return [
+    radius * cosLat * (xAu / flat),
+    radius * Math.sin(latitude),
+    radius * cosLat * (yAu / flat),
+  ]
+}
+
+/**
+ * Closed orbit polyline matching getPlanetPosition's mapping, sampled over
+ * one orbital period around the simulation epoch. Element drift within a
+ * century is far below a pixel, so the line is treated as static.
+ */
+export function getPlanetOrbitPoints(
+  planet: PlanetData,
+  modifiers: OrbitModifiers = {},
+  segments = 192,
+): Array<[number, number, number]> {
+  const points: Array<[number, number, number]> = []
+  for (let i = 0; i <= segments; i++) {
+    points.push(getPlanetPosition(planet, (i / segments) * planet.orbitalPeriod, modifiers))
+  }
+  return points
 }
 
 /** Local position of a moon relative to its parent planet. */
@@ -884,13 +909,14 @@ export function getMoonLocalPosition(
 ): [number, number, number] {
   const eccentricityScale = modifiers.eccentricityScale ?? 1
   const inclinationScale = modifiers.inclinationScale ?? 1
-  const eccentricity = (moon.eccentricity ?? 0) * eccentricityScale
+  const trueScale = modifiers.trueScale ?? false
+  const eccentricity = (moon.eccentricity ?? 0) * (trueScale ? 1 : eccentricityScale)
   return getKeplerPosition(
-    getMoonLocalOrbitRadius(moon, parent, modifiers.trueScale ?? false, eccentricity),
+    getMoonLocalOrbitRadius(moon, parent, trueScale),
     moon.orbitalPeriod,
     simTime,
     eccentricity,
-    (moon.inclination ?? 0) * inclinationScale,
+    (moon.inclination ?? 0) * (trueScale ? 1 : inclinationScale),
     moon.phase,
   )
 }
@@ -904,4 +930,26 @@ export function getMoonWorldPosition(
   const [px, py, pz] = getPlanetPosition(hit.parent, simTime, modifiers)
   const [mx, my, mz] = getMoonLocalPosition(hit.moon, hit.parent, simTime, modifiers)
   return [px + mx, py + my, pz + mz]
+}
+
+/**
+ * Real heliocentric position of a moon in AU (parent ephemeris + local
+ * Kepler orbit at physical scale). Used by the live archive readouts.
+ */
+export function getMoonHeliocentricAu(
+  hit: MoonHit,
+  simTime: number,
+): [number, number, number] {
+  const [px, py, pz] = getPlanetHeliocentricAu(hit.parent.id, simTime)
+  const radiusAu = hit.moon.realOrbitKm / KM_PER_AU
+  const [lx, ly, lz] = getKeplerPosition(
+    radiusAu,
+    hit.moon.orbitalPeriod,
+    simTime,
+    hit.moon.eccentricity ?? 0,
+    hit.moon.inclination ?? 0,
+    hit.moon.phase,
+  )
+  // getKeplerPosition returns scene-axis order [x, vertical, y].
+  return [px + lx, py + lz, pz + ly]
 }

@@ -29,6 +29,7 @@ type NumberControlProps = {
   max: number
   step: number
   onChange: (value: number) => void
+  disabled?: boolean
 }
 
 const PRESETS: Array<{
@@ -52,9 +53,10 @@ function NumberControl({
   max,
   step,
   onChange,
+  disabled = false,
 }: NumberControlProps) {
   return (
-    <div className="parameter-control">
+    <div className={cn('parameter-control', disabled && 'opacity-55')}>
       <div className="flex items-start gap-3">
         <span className="parameter-icon">
           <Icon />
@@ -75,6 +77,7 @@ function NumberControl({
         max={max}
         step={step}
         value={[value]}
+        disabled={disabled}
         onValueChange={(nextValue) => {
           const next = nextValue[0]
           if (typeof next === 'number') onChange(next)
@@ -173,7 +176,7 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
             </span>
             <span className="mt-0.5 block text-[10px] leading-relaxed text-slate-500">
               {trueScale
-                ? '轨道距离按真实比例；天体为可见性放大，太阳与航天器另有显示例外'
+                ? '严格同比例：半径与轨道共用同一 km 比例尺，无任何体积放大；小天体以屏幕标记辅助定位与点击'
                 : '当前为艺术化比例：外侧轨道压缩、天体放大以便观赏'}
             </span>
           </span>
@@ -228,46 +231,50 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
           <NumberControl
             icon={CircleDot}
             label="天体显示比例"
-            hint="仅改变可视尺寸，不影响轨道参数；航天器仍为示意尺寸"
+            hint={trueScale ? '真实比例模式下锁定为 1×（物理量不可调）' : '仅改变可视尺寸，不影响轨道参数；航天器仍为示意尺寸'}
             value={planetScale}
             valueLabel={`${planetScale.toFixed(2)}×`}
             min={0.65}
             max={1.8}
             step={0.01}
             onChange={setPlanetScale}
+            disabled={trueScale}
           />
           <NumberControl
             icon={Orbit}
             label="轨道跨度"
-            hint="压缩或展开整个行星系统"
+            hint={trueScale ? '真实比例模式下锁定为 1×（物理量不可调）' : '压缩或展开整个行星系统'}
             value={orbitScale}
             valueLabel={`${orbitScale.toFixed(2)}×`}
             min={0.72}
             max={1.18}
             step={0.01}
             onChange={setOrbitScale}
+            disabled={trueScale}
           />
           <NumberControl
             icon={Waypoints}
             label="轨道偏心率"
-            hint="增强椭圆程度与近日点速度差"
+            hint={trueScale ? '真实比例模式下锁定为 1×（物理量不可调）' : '增强椭圆程度与近日点速度差'}
             value={eccentricityScale}
             valueLabel={`${eccentricityScale.toFixed(2)}×`}
             min={0}
             max={2.5}
             step={0.02}
             onChange={setEccentricityScale}
+            disabled={trueScale}
           />
           <NumberControl
             icon={Rotate3D}
             label="轨道倾角"
-            hint="放大各行星相对黄道面的倾斜"
+            hint={trueScale ? '真实比例模式下锁定为 1×（物理量不可调）' : '放大各行星相对黄道面的倾斜'}
             value={inclinationScale}
             valueLabel={`${inclinationScale.toFixed(2)}×`}
             min={0}
             max={3}
             step={0.02}
             onChange={setInclinationScale}
+            disabled={trueScale}
           />
         </div>
       </section>

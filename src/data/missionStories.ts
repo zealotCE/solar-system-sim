@@ -51,3 +51,8 @@ export const MISSION_STORIES: MissionStory[] = [
 export function getMissionStoryEvent(storyId: string, eventId: string): MissionStoryEvent | null {
   return MISSION_STORIES.find((story) => story.id === storyId)?.events.find((event) => event.id === eventId) ?? null
 }
+
+/** Returns the historical timeline owned by a spacecraft archive, if one exists. */
+export function getMissionStoryForCraft(craftId: string): MissionStory | null {
+  return MISSION_STORIES.find((story) => story.craftId === craftId) ?? null
+}

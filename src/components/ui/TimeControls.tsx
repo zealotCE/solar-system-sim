@@ -1,8 +1,10 @@
 import {
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Database,
   Focus,
+  History,
   Languages,
   ListTree,
   Maximize2,
@@ -15,9 +17,15 @@ import {
   Tag,
   type LucideIcon,
 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useSimulation } from '@/hooks/useSimulation'
-import { formatSpeed } from '@/lib/utils'
+import {
+  dateInputToSimTime,
+  formatSimDate,
+  formatSpeed,
+  simTimeToDateInput,
+} from '@/lib/utils'
 import type { PanelId } from './ControlPanel'
 import { Button } from './button'
 import { Slider } from './slider'
@@ -42,6 +50,81 @@ const PANEL_BUTTONS: Array<{ id: PanelId; label: string; icon: LucideIcon }> = [
   { id: 'parameters', label: '参数', icon: SlidersHorizontal },
 ]
 
+/** Star Walk-style time machine: pick any date between 1950 and 2050. */
+function DateJump() {
+  const { simTime, setSimulationTime, resetSimulationTime, jumpToNow, pureChinese } =
+    useSimulation()
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => window.removeEventListener('pointerdown', onPointerDown)
+  }, [open])
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        className="time-step"
+        data-active={open}
+        onClick={() => setOpen((value) => !value)}
+        title={pureChinese ? '时间机器：跳转到指定日期' : 'Time machine: jump to a date'}
+        aria-expanded={open}
+      >
+        <CalendarDays className="size-3" />
+        {formatSimDate(simTime)}
+      </button>
+      {open ? (
+        <div className="absolute bottom-9 left-1/2 z-50 w-[228px] -translate-x-1/2 rounded-xl border border-cyan-200/15 bg-[#071321]/96 p-3 shadow-2xl backdrop-blur-xl">
+          <p className="eyebrow mb-2 text-amber-200/65">
+            {pureChinese ? '时间机器 · 1950–2050' : 'TIME MACHINE · 1950–2050'}
+          </p>
+          <input
+            type="date"
+            min="1950-01-01"
+            max="2050-12-31"
+            value={simTimeToDateInput(simTime)}
+            onChange={(event) => {
+              const next = dateInputToSimTime(event.target.value)
+              if (next !== null) setSimulationTime(next)
+            }}
+            className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 font-mono text-[12px] text-slate-100 outline-none [color-scheme:dark] focus:border-cyan-200/40"
+            aria-label={pureChinese ? '跳转日期' : 'Jump to date'}
+          />
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              className="time-step justify-center"
+              onClick={() => {
+                jumpToNow()
+                setOpen(false)
+              }}
+            >
+              <History className="size-3" />
+              {pureChinese ? '今天' : '今天 / NOW'}
+            </button>
+            <button
+              type="button"
+              className="time-step justify-center"
+              onClick={() => {
+                resetSimulationTime()
+                setOpen(false)
+              }}
+            >
+              2026 起点
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function TimeControls({
   activePanel,
   onTogglePanel,
@@ -56,6 +139,8 @@ export function TimeControls({
     togglePlay,
     speed,
     setSpeed,
+    timeDirection,
+    setTimeDirection,
     showOrbits,
     setShowOrbits,
     showLabels,
@@ -65,7 +150,6 @@ export function TimeControls({
     selectedPlanetId,
     setFollowPlanet,
     stepTime,
-    resetSimulationTime,
     pureChinese,
     setPureChinese,
   } = useSimulation()
@@ -87,14 +171,35 @@ export function TimeControls({
           <div className="flex items-center gap-1.5">
             <span className={isPlaying ? 'live-dot' : 'size-1.5 rounded-full bg-slate-600'} />
             <p className="font-display text-[9px] tracking-[0.16em] text-slate-500">
-              {pureChinese ? (isPlaying ? '运行中' : '已暂停') : isPlaying ? 'RUNNING' : 'PAUSED'}
+              {pureChinese
+                ? isPlaying
+                  ? timeDirection === -1
+                    ? '倒放中'
+                    : '运行中'
+                  : '已暂停'
+                : isPlaying
+                  ? timeDirection === -1
+                    ? 'REWIND'
+                    : 'RUNNING'
+                  : 'PAUSED'}
             </p>
           </div>
           <p className="mt-1 font-display text-base leading-none text-amber-100 tabular-nums">
+            {timeDirection === -1 ? '−' : ''}
             {formatSpeed(speed)}
             <span className="ml-0.5 text-[10px] text-amber-200/50">×</span>
           </p>
         </div>
+        <Button
+          variant={timeDirection === -1 ? 'default' : 'secondary'}
+          size="icon"
+          className="control-tool"
+          onClick={() => setTimeDirection(timeDirection === -1 ? 1 : -1)}
+          title={timeDirection === -1 ? '切换为正向播放' : '切换为倒放（时间回溯）'}
+          aria-pressed={timeDirection === -1}
+        >
+          <History />
+        </Button>
         <div className="flex gap-1 md:hidden">
           <Button variant="ghost" size="icon" className="size-8" onClick={() => stepTime(-30)}>
             <ChevronLeft />
@@ -110,7 +215,7 @@ export function TimeControls({
           <div className="flex items-center gap-2">
             <span className="eyebrow">{pureChinese ? '时间速率' : 'TIME VELOCITY'}</span>
             <span className="hidden text-[9px] text-slate-600 lg:inline">
-              模型时间：1 秒推进 {formatSpeed(speed)} 地球日
+              模型时间：1 秒{timeDirection === -1 ? '回溯' : '推进'} {formatSpeed(speed)} 地球日
             </span>
           </div>
           <div className="hidden items-center gap-1 md:flex">
@@ -123,9 +228,7 @@ export function TimeControls({
               <ChevronLeft />
               {pureChinese ? '30天' : '30D'}
             </button>
-            <button type="button" className="time-step" onClick={resetSimulationTime}>
-              2026 起点
-            </button>
+            <DateJump />
             <button
               type="button"
               className="time-step"

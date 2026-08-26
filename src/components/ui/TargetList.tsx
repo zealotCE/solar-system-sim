@@ -1,8 +1,10 @@
-import { ChevronRight, Rocket, Sparkle } from 'lucide-react'
+import { ChevronRight, Rocket, Search, Sparkle } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
 import { PLANETS, SUN } from '@/data/planets'
-import { SPACECRAFT, getCraftKindLabel } from '@/data/spacecraft'
+import { SPACECRAFT, getCraftKindLabel, isCraftLaunched } from '@/data/spacecraft'
 import { useSimulation } from '@/hooks/useSimulation'
+import { useMediaQuery } from '@/lib/utils'
 
 type TargetListProps = {
   onPicked?: () => void
@@ -51,7 +53,22 @@ const CRAFT_ROWS: TargetRow[] = SPACECRAFT.map((craft) => ({
   craft: true,
 }))
 
-const TOTAL_COUNT = STAR_ROWS.length + PLANET_ROWS.length + CRAFT_ROWS.length
+/** English search terms beyond the visible codes (full craft names, etc.). */
+const EXTRA_SEARCH_TERMS: Record<string, string> = Object.fromEntries(
+  SPACECRAFT.map((craft) => [craft.id, craft.englishName]),
+)
+
+function rowMatches(row: TargetRow, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return (
+    row.name.toLowerCase().includes(q) ||
+    row.english.toLowerCase().includes(q) ||
+    row.id.toLowerCase().includes(q) ||
+    row.meta.toLowerCase().includes(q) ||
+    (EXTRA_SEARCH_TERMS[row.id]?.toLowerCase().includes(q) ?? false)
+  )
+}
 
 function TargetGroup({
   title,
@@ -116,12 +133,33 @@ function TargetGroup({
 }
 
 export function TargetList({ onPicked }: TargetListProps) {
-  const { selectedPlanetId, selectPlanet, pureChinese } = useSimulation()
+  const { selectedPlanetId, selectPlanet, pureChinese, simTime } = useSimulation()
+  const [query, setQuery] = useState('')
+  const isDesktop = useMediaQuery('(min-width: 1024px)')
+  const launchedCraftIds = useMemo(
+    () => new Set(SPACECRAFT.filter((craft) => isCraftLaunched(craft, simTime)).map((craft) => craft.id)),
+    [simTime],
+  )
+  const availableCraftRows = useMemo(
+    () => CRAFT_ROWS.filter((row) => launchedCraftIds.has(row.id)),
+    [launchedCraftIds],
+  )
+  const totalCount = STAR_ROWS.length + PLANET_ROWS.length + availableCraftRows.length
 
   const handleSelect = (id: string) => {
     selectPlanet(id)
     onPicked?.()
   }
+
+  const filtered = useMemo(
+    () => ({
+      stars: STAR_ROWS.filter((row) => rowMatches(row, query)),
+      planets: PLANET_ROWS.filter((row) => rowMatches(row, query)),
+      craft: availableCraftRows.filter((row) => rowMatches(row, query)),
+    }),
+    [query, availableCraftRows],
+  )
+  const matchCount = filtered.stars.length + filtered.planets.length + filtered.craft.length
 
   return (
     <div className="space-y-5 p-1">
@@ -132,33 +170,57 @@ export function TargetList({ onPicked }: TargetListProps) {
         </div>
         <span className="status-chip">
           <Rocket className="size-2.5" />
-          {TOTAL_COUNT}
+          {query ? `${matchCount}/${totalCount}` : totalCount}
         </span>
       </div>
-      <TargetGroup
-        title="恒星"
-        code={pureChinese ? '恒星' : 'STAR'}
-        rows={STAR_ROWS}
-        selectedId={selectedPlanetId}
-        onSelect={handleSelect}
-        pureChinese={pureChinese}
-      />
-      <TargetGroup
-        title="行星与卫星"
-        code={pureChinese ? '行星 · 卫星' : 'PLANETS · MOONS'}
-        rows={PLANET_ROWS}
-        selectedId={selectedPlanetId}
-        onSelect={handleSelect}
-        pureChinese={pureChinese}
-      />
-      <TargetGroup
-        title="人类航天器"
-        code={pureChinese ? '任务' : 'MISSIONS'}
-        rows={CRAFT_ROWS}
-        selectedId={selectedPlanetId}
-        onSelect={handleSelect}
-        pureChinese={pureChinese}
-      />
+      <div className="relative px-1">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-500" />
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          // Desktop only: on touch devices autofocus pops the keyboard over the sheet.
+          autoFocus={isDesktop}
+          placeholder={pureChinese ? '搜索行星、卫星或航天器…' : '搜索目标 / Search targets…'}
+          aria-label={pureChinese ? '搜索目标' : 'Search targets'}
+          className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] py-2 pl-9 pr-3 text-xs text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-200/35 focus:bg-white/[0.05]"
+        />
+      </div>
+      {matchCount === 0 ? (
+        <p className="px-1 text-center text-[11px] leading-relaxed text-slate-500">
+          {pureChinese ? '没有匹配的目标' : '没有匹配的目标 / NO MATCHES'}
+        </p>
+      ) : null}
+      {filtered.stars.length ? (
+        <TargetGroup
+          title="恒星"
+          code={pureChinese ? '恒星' : 'STAR'}
+          rows={filtered.stars}
+          selectedId={selectedPlanetId}
+          onSelect={handleSelect}
+          pureChinese={pureChinese}
+        />
+      ) : null}
+      {filtered.planets.length ? (
+        <TargetGroup
+          title="行星与卫星"
+          code={pureChinese ? '行星 · 卫星' : 'PLANETS · MOONS'}
+          rows={filtered.planets}
+          selectedId={selectedPlanetId}
+          onSelect={handleSelect}
+          pureChinese={pureChinese}
+        />
+      ) : null}
+      {filtered.craft.length ? (
+        <TargetGroup
+          title="人类航天器"
+          code={pureChinese ? '任务' : 'MISSIONS'}
+          rows={filtered.craft}
+          selectedId={selectedPlanetId}
+          onSelect={handleSelect}
+          pureChinese={pureChinese}
+        />
+      ) : null}
     </div>
   )
 }

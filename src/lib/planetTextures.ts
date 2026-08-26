@@ -209,3 +209,43 @@ export function getGlowTexture(): THREE.CanvasTexture {
   cache.set(key, texture)
   return texture
 }
+
+/** Non-luminous screen-space locator used for physically tiny spacecraft. */
+export function getCraftLocatorTexture(): THREE.CanvasTexture {
+  const key = 'craft-locator'
+  const hit = cache.get(key)
+  if (hit) return hit
+
+  const size = 128
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas 2D unavailable')
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)'
+  ctx.fillStyle = 'rgba(255,255,255,0.95)'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(64, 64, 31, 0, Math.PI * 2)
+  ctx.stroke()
+  for (const [x1, y1, x2, y2] of [
+    [64, 13, 64, 27],
+    [64, 101, 64, 115],
+    [13, 64, 27, 64],
+    [101, 64, 115, 64],
+  ]) {
+    ctx.beginPath()
+    ctx.moveTo(x1, y1)
+    ctx.lineTo(x2, y2)
+    ctx.stroke()
+  }
+  ctx.beginPath()
+  ctx.arc(64, 64, 3, 0, Math.PI * 2)
+  ctx.fill()
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  cache.set(key, texture)
+  return texture
+}

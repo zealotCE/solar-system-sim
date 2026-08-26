@@ -63,14 +63,20 @@ export function ControlPanel() {
         else setActivePanel(null)
       } else if (event.key === 'r' || event.key === 'R') {
         resetCamera()
+      } else if (event.key === '/') {
+        // Star Walk-style quick search: focus jumps into the target list.
+        event.preventDefault()
+        setActivePanel('targets')
       } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         event.preventDefault()
-        selectPlanet(getAdjacentTargetId(selectedPlanetId, event.key === 'ArrowRight' ? 1 : -1))
+        selectPlanet(
+          getAdjacentTargetId(selectedPlanetId, event.key === 'ArrowRight' ? 1 : -1, simTime),
+        )
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [togglePlay, resetCamera, selectPlanet, selectedPlanetId, immersive])
+  }, [togglePlay, resetCamera, selectPlanet, selectedPlanetId, immersive, simTime])
 
   const togglePanel = (panel: PanelId) => {
     setActivePanel((current) => (current === panel ? null : panel))
@@ -150,7 +156,7 @@ export function ControlPanel() {
             <strong>{OBJECT_COUNT}</strong>
           </div>
           <div className="header-readout hidden sm:block">
-            <span>{pureChinese ? '模型日期 · 2026 起算' : 'MODEL DATE · 2026 起算'}</span>
+            <span>{pureChinese ? '模型日期 · 1950–2050' : 'MODEL DATE · 1950–2050'}</span>
             <strong>{formatSimDate(simTime)}</strong>
           </div>
           <div className="header-readout min-w-[98px]">
@@ -195,7 +201,7 @@ export function ControlPanel() {
 
       <div className="pointer-events-none absolute left-4 top-24 hidden items-center gap-2 text-[9px] tracking-[0.18em] text-slate-600 md:flex">
         <Orbit className="size-3.5 text-cyan-300/45" />
-        {pureChinese ? '拖拽旋转 · 滚轮缩放 · 空格暂停' : 'DRAG TO ORBIT · SCROLL TO ZOOM · SPACE TO PAUSE'}
+        {pureChinese ? '拖拽旋转 · 滚轮缩放 · 空格暂停 · / 搜索' : 'DRAG TO ORBIT · SCROLL TO ZOOM · SPACE TO PAUSE · / SEARCH'}
       </div>
 
       <footer className="mobile-controls pointer-events-auto absolute inset-x-0 bottom-0 p-3 md:px-5 md:pb-5">

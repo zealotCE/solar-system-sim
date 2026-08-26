@@ -3,7 +3,8 @@
 //
 //   node scripts/capture.mjs out.png [action ...]
 //
-// Actions: click:<text> | wait:<ms> | wheel:<deltaY>
+// Actions: click:<text> | wait:<ms> | wheel:<deltaY> |
+//          assert:<visible text> | assert-not:<visible text>
 import { existsSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -31,7 +32,9 @@ const browser = await chromium.launch({
 
 try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
-  await page.goto('http://localhost:4317/', { waitUntil: 'domcontentloaded' })
+  await page.goto(process.env.CAPTURE_URL ?? 'http://localhost:4317/', {
+    waitUntil: 'domcontentloaded',
+  })
   await page.waitForTimeout(4500)
   // Real input wakes the compositor: without it the headless shell can leave
   // the page throttled and the WebGL requestAnimationFrame loop never starts.
@@ -60,6 +63,19 @@ try {
       await page.waitForTimeout(700)
     } else if (kind === 'wait') {
       await page.waitForTimeout(Number(value) || 1000)
+    } else if (kind === 'assert' || kind === 'assert-not') {
+      const present = await page.evaluate(
+        (text) => document.body.innerText.includes(text),
+        value,
+      )
+      const expected = kind === 'assert'
+      if (present !== expected) {
+        throw new Error(
+          expected
+            ? `Expected page text "${value}"`
+            : `Unexpected page text "${value}"`,
+        )
+      }
     }
   }
 

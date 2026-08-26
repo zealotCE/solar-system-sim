@@ -1,11 +1,11 @@
 import { Html } from '@react-three/drei'
 import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
 import {
+  getMoonLocalOrbitRadius,
   getMoonLocalPosition,
-  getMoonSystemFactor,
   getMoonVisualRadius,
   getPlanetVisualRadius,
   type MoonData,
@@ -26,7 +26,9 @@ export function Moon({ moon, parent }: MoonProps) {
   const groupRef = useRef<THREE.Group>(null)
   const visualRef = useRef<THREE.Group>(null)
   const meshRef = useRef<THREE.Mesh>(null)
+  const hitRef = useRef<THREE.Mesh>(null)
   const labelRef = useRef<HTMLDivElement>(null)
+  const { size } = useThree()
   const {
     simTimeRef,
     selectPlanet,
@@ -48,9 +50,11 @@ export function Moon({ moon, parent }: MoonProps) {
   const selected = selectedPlanetId === moon.id
   const radius = getMoonVisualRadius(moon, trueScale)
   const parentRadius = getPlanetVisualRadius(parent, trueScale)
-  const systemFactor = getMoonSystemFactor(parent, trueScale)
+  const orbitLineRadius = getMoonLocalOrbitRadius(moon, parent, trueScale)
+  // Reveal distance for the label (and, in true scale, the pixel hit sphere):
+  // roughly "the camera is inspecting this planet system".
   const labelDistance = trueScale
-    ? Math.max(1.6, parentRadius * 9)
+    ? Math.max(parentRadius * 90, orbitLineRadius * 26)
     : moon.radius < 0.045
       ? 6
       : Math.max(11, parentRadius * 8)
@@ -68,10 +72,25 @@ export function Moon({ moon, parent }: MoonProps) {
     const nextScale = THREE.MathUtils.lerp(visualRef.current.scale.x, targetScale, 0.1)
     visualRef.current.scale.setScalar(nextScale)
 
+    groupRef.current.getWorldPosition(scratchWorld)
+    const cameraDistance = camera.position.distanceTo(scratchWorld)
+    const nearSystem = selected || cameraDistance < labelDistance
+
     if (labelRef.current) {
-      groupRef.current.getWorldPosition(scratchWorld)
-      const visible = selected || camera.position.distanceTo(scratchWorld) < labelDistance
-      labelRef.current.style.opacity = visible ? '1' : '0'
+      labelRef.current.style.opacity = nearSystem ? '1' : '0'
+    }
+
+    // True-scale moons are sub-pixel until the camera enters their system;
+    // the enlarged pick target only activates nearby so overview clicks
+    // cannot be stolen from the parent planet.
+    if (hitRef.current && camera instanceof THREE.PerspectiveCamera) {
+      if (!nearSystem) {
+        hitRef.current.scale.setScalar(0.0001)
+      } else {
+        const worldPerPixel =
+          (2 * cameraDistance * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / size.height
+        hitRef.current.scale.setScalar(Math.max(radius * 1.2, worldPerPixel * 9))
+      }
     }
   })
 
@@ -79,15 +98,33 @@ export function Moon({ moon, parent }: MoonProps) {
     <group>
       {showOrbits ? (
         <OrbitLine
-          orbitRadius={moon.orbitRadius * systemFactor}
-          eccentricity={(moon.eccentricity ?? 0) * eccentricityScale}
-          inclination={(moon.inclination ?? 0) * inclinationScale}
+          orbitRadius={orbitLineRadius}
+          eccentricity={(moon.eccentricity ?? 0) * (trueScale ? 1 : eccentricityScale)}
+          inclination={(moon.inclination ?? 0) * (trueScale ? 1 : inclinationScale)}
           color={moon.color}
           active={selected}
         />
       ) : null}
 
       <group ref={groupRef}>
+        {trueScale ? (
+          <mesh
+            ref={hitRef}
+            onClick={(event) => {
+              event.stopPropagation()
+              selectPlanet(moon.id)
+            }}
+            onPointerOver={() => {
+              document.body.style.cursor = 'pointer'
+            }}
+            onPointerOut={() => {
+              document.body.style.cursor = 'auto'
+            }}
+          >
+            <sphereGeometry args={[1, 8, 8]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
+        ) : null}
         <group ref={visualRef}>
           <mesh
             ref={meshRef}
@@ -106,6 +143,10 @@ export function Moon({ moon, parent }: MoonProps) {
             <meshStandardMaterial
               map={texture}
               color={isPhoto ? '#ffffff' : moon.color}
+              transparent={false}
+              opacity={1}
+              depthTest
+              depthWrite
               roughness={0.92}
               metalness={0.04}
               emissive={selected ? '#6b655c' : '#1a1816'}
@@ -124,7 +165,7 @@ export function Moon({ moon, parent }: MoonProps) {
             center
             zIndexRange={[12, 0]}
             style={{ pointerEvents: 'none' }}
-            position={[0, radius * planetScale + (trueScale ? 0.06 : 0.16), 0]}
+            position={[0, trueScale ? radius * 2.2 : radius * planetScale + 0.16, 0]}
           >
             <div
               ref={labelRef}

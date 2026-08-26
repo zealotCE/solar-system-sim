@@ -1,6 +1,6 @@
 import { Html } from '@react-three/drei'
 import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
 import { getPlanetPosition, getPlanetVisualRadius, type PlanetData } from '@/data/planets'
@@ -18,6 +18,8 @@ export function Planet({ planet }: PlanetProps) {
   const visualRef = useRef<THREE.Group>(null)
   const meshRef = useRef<THREE.Mesh>(null)
   const cloudsRef = useRef<THREE.Mesh>(null)
+  const hitRef = useRef<THREE.Mesh>(null)
+  const { size } = useThree()
   const {
     simTimeRef,
     selectPlanet,
@@ -43,7 +45,7 @@ export function Planet({ planet }: PlanetProps) {
   const selected = selectedPlanetId === planet.id
   const radius = getPlanetVisualRadius(planet, trueScale)
 
-  useFrame(() => {
+  useFrame(({ camera }) => {
     if (!groupRef.current || !meshRef.current || !visualRef.current) return
     const [x, y, z] = getPlanetPosition(planet, simTimeRef.current, {
       orbitScale,
@@ -58,6 +60,16 @@ export function Planet({ planet }: PlanetProps) {
     const targetScale = planetScale * (selected ? 1.08 : 1)
     const nextScale = THREE.MathUtils.lerp(visualRef.current.scale.x, targetScale, 0.09)
     visualRef.current.scale.setScalar(nextScale)
+
+    // In true-scale mode planets are sub-pixel from overview distance; an
+    // invisible screen-space hit sphere keeps them clickable (same approach
+    // as the spacecraft markers).
+    if (hitRef.current && camera instanceof THREE.PerspectiveCamera) {
+      const distance = camera.position.distanceTo(groupRef.current.position)
+      const worldPerPixel =
+        (2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / size.height
+      hitRef.current.scale.setScalar(Math.max(radius * 1.2, worldPerPixel * 13))
+    }
   })
 
   const ringInner = planet.id === 'uranus' ? radius * 1.35 : radius * 1.28
@@ -67,6 +79,24 @@ export function Planet({ planet }: PlanetProps) {
 
   return (
     <group ref={groupRef}>
+      {trueScale ? (
+        <mesh
+          ref={hitRef}
+          onClick={(event) => {
+            event.stopPropagation()
+            selectPlanet(planet.id)
+          }}
+          onPointerOver={() => {
+            document.body.style.cursor = 'pointer'
+          }}
+          onPointerOut={() => {
+            document.body.style.cursor = 'auto'
+          }}
+        >
+          <sphereGeometry args={[1, 10, 10]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      ) : null}
       <group ref={visualRef} rotation={[0, 0, planet.axialTilt]}>
         <mesh
           ref={meshRef}
@@ -87,6 +117,10 @@ export function Planet({ planet }: PlanetProps) {
             color={isPhoto ? '#ffffff' : planet.color}
             emissive={planet.emissive}
             emissiveIntensity={isPhoto ? (selected ? 0.34 : 0.05) : selected ? 0.62 : 0.16}
+            transparent={false}
+            opacity={1}
+            depthTest
+            depthWrite
             roughness={planet.textureKind === 'gas' ? 0.58 : 0.84}
             metalness={0.035}
           />
@@ -156,7 +190,7 @@ export function Planet({ planet }: PlanetProps) {
           center
           zIndexRange={[12, 0]}
           style={{ pointerEvents: 'none' }}
-          position={[0, radius * planetScale + (trueScale ? 0.2 : 0.58), 0]}
+          position={[0, trueScale ? radius * 2.4 : radius * planetScale + 0.58, 0]}
         >
           <div className={`planet-label ${selected ? 'planet-label-active' : ''}`}>
             <span className="planet-label-dot" style={{ backgroundColor: planet.color }} />

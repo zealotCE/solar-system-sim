@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 
+import { DeepLink } from '@/components/DeepLink'
 import { ControlPanel } from '@/components/ui/ControlPanel'
 import { SolarSystem } from '@/components/scene/SolarSystem'
 import { SimulationProvider } from '@/hooks/useSimulation'
@@ -32,6 +33,7 @@ class SceneErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
 export default function App() {
   return (
     <SimulationProvider>
+      <DeepLink />
       <main className="app-shell relative h-dvh w-full overflow-hidden bg-[#02060f]">
         <SceneErrorBoundary>
           <SolarSystem />

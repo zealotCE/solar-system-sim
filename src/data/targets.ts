@@ -1,5 +1,5 @@
 import { PLANETS, SUN } from './planets'
-import { SPACECRAFT } from './spacecraft'
+import { SPACECRAFT, isCraftLaunched } from './spacecraft'
 
 /**
  * Canonical browsing order for every selectable target, matching the target
@@ -11,10 +11,24 @@ export const TARGET_SEQUENCE: string[] = [
   ...SPACECRAFT.map((craft) => craft.id),
 ]
 
-/** Neighboring target id with wrap-around; null id starts from the Sun. */
-export function getAdjacentTargetId(currentId: string | null, step: 1 | -1): string {
-  const index = currentId ? TARGET_SEQUENCE.indexOf(currentId) : -1
-  if (index === -1) return TARGET_SEQUENCE[0]
-  const length = TARGET_SEQUENCE.length
-  return TARGET_SEQUENCE[(index + step + length) % length]
+/** Browsing order at a model time; pre-launch spacecraft are omitted. */
+export function getAvailableTargetSequence(simTime: number): string[] {
+  return [
+    SUN.id,
+    ...PLANETS.flatMap((planet) => [planet.id, ...planet.moons.map((moon) => moon.id)]),
+    ...SPACECRAFT.filter((craft) => isCraftLaunched(craft, simTime)).map((craft) => craft.id),
+  ]
+}
+
+/** Neighboring available target with wrap-around; null id starts from the Sun. */
+export function getAdjacentTargetId(
+  currentId: string | null,
+  step: 1 | -1,
+  simTime?: number,
+): string {
+  const sequence = simTime === undefined ? TARGET_SEQUENCE : getAvailableTargetSequence(simTime)
+  const index = currentId ? sequence.indexOf(currentId) : -1
+  if (index === -1) return sequence[0]
+  const length = sequence.length
+  return sequence[(index + step + length) % length]
 }

@@ -1,6 +1,6 @@
 import { Html } from '@react-three/drei'
 import { useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
 import { SUN, getSunVisualRadius } from '@/data/planets'
@@ -12,6 +12,8 @@ export function Sun() {
   const visualRef = useRef<THREE.Group>(null)
   const coreRef = useRef<THREE.Mesh>(null)
   const glowRef = useRef<THREE.Sprite>(null)
+  const hitRef = useRef<THREE.Mesh>(null)
+  const { size } = useThree()
   const {
     selectPlanet,
     selectedPlanetId,
@@ -26,16 +28,33 @@ export function Sun() {
   const glow = useMemo(() => getGlowTexture(), [])
   const radius = getSunVisualRadius(trueScale)
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock, camera }) => {
     if (!coreRef.current || !visualRef.current) return
     coreRef.current.rotation.y = (simTimeRef.current * 365.25 * Math.PI * 2) / SUN.rotationPeriod
     const selected = selectedPlanetId === SUN.id
     const targetScale = planetScale * (selected ? 1.045 : 1)
     const nextScale = THREE.MathUtils.lerp(visualRef.current.scale.x, targetScale, 0.075)
     visualRef.current.scale.setScalar(nextScale)
+
+    let worldPerPixel = 0
+    if (camera instanceof THREE.PerspectiveCamera) {
+      const distance = camera.position.length()
+      worldPerPixel =
+        (2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / size.height
+    }
+
     if (glowRef.current) {
       const pulse = 1 + Math.sin(clock.elapsedTime * 0.72) * 0.025
-      glowRef.current.scale.set(radius * 6 * pulse, radius * 6 * pulse, 1)
+      // The physically-sized true-scale Sun is sub-pixel from the overview;
+      // keep its glow at a minimum apparent size so the star stays findable.
+      const glowScale = trueScale
+        ? Math.max(radius * 6, worldPerPixel * 30) * pulse
+        : radius * 6 * pulse
+      glowRef.current.scale.set(glowScale, glowScale, 1)
+    }
+
+    if (hitRef.current) {
+      hitRef.current.scale.setScalar(Math.max(radius * 1.15, worldPerPixel * 13))
     }
   })
 
@@ -43,6 +62,24 @@ export function Sun() {
 
   return (
     <group>
+      {trueScale ? (
+        <mesh
+          ref={hitRef}
+          onClick={(event) => {
+            event.stopPropagation()
+            selectPlanet(SUN.id)
+          }}
+          onPointerOver={() => {
+            document.body.style.cursor = 'pointer'
+          }}
+          onPointerOut={() => {
+            document.body.style.cursor = 'auto'
+          }}
+        >
+          <sphereGeometry args={[1, 10, 10]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      ) : null}
       <group ref={visualRef}>
         <mesh
           ref={coreRef}
@@ -65,6 +102,10 @@ export function Sun() {
               emissive="#ffb347"
               emissiveMap={texture}
               emissiveIntensity={selected ? 2.7 : 2.05}
+              transparent={false}
+              opacity={1}
+              depthTest
+              depthWrite
               roughness={0.4}
               metalness={0}
             />
@@ -74,6 +115,10 @@ export function Sun() {
               color={SUN.color}
               emissive={SUN.emissive}
               emissiveIntensity={selected ? 3.8 : 2.85}
+              transparent={false}
+              opacity={1}
+              depthTest
+              depthWrite
               roughness={0.32}
               metalness={0}
             />
@@ -129,7 +174,7 @@ export function Sun() {
           center
           zIndexRange={[12, 0]}
           style={{ pointerEvents: 'none' }}
-          position={[0, radius * planetScale + (trueScale ? 0.3 : 1), 0]}
+          position={[0, trueScale ? radius * 2.6 : radius * planetScale + 1, 0]}
         >
           <div className={`planet-label sun-label ${selected ? 'planet-label-active' : ''}`}>
             <span className="planet-label-dot bg-amber-300" />

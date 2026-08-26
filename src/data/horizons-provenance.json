@@ -1,30 +1,52 @@
 {
-  "generatedAt": "2026-08-25T13:21:54.656Z",
+  "generatedAt": "2026-08-26T00:53:52.640Z",
   "endpoint": "https://ssd.jpl.nasa.gov/api/horizons.api",
   "frame": "Sun-centered (500@10), geometric (VEC_CORR=NONE), ICRF reference plane/system, TDB, AU and AU/day",
   "sampling": "30 days; first and last samples follow Horizons START_TIME and STOP_TIME inclusion",
   "trajectories": [
     {
+      "id": "voyager1",
+      "command": "-31",
+      "start": "1977-09-08",
+      "stop": "2051-01-15",
+      "query": "format=text&COMMAND=%27-31%27&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=500%4010&REF_PLANE=FRAME&REF_SYSTEM=ICRF&VEC_CORR=NONE&OUT_UNITS=AU-D&TIME_TYPE=TDB&START_TIME=%271977-09-08%27&STOP_TIME=%272051-01-15%27&STEP_SIZE=%2730+d%27&VEC_TABLE=3&OBJ_DATA=NO",
+      "rawSha256": "167e3d1a8db87c520a3a8aee61026b650fa4f15716c1949b1666c206cc62998b",
+      "sampleCount": 894,
+      "firstJdTdb": 2443394.5,
+      "lastJdTdb": 2470184.5
+    },
+    {
       "id": "voyager2",
       "command": "-32",
       "start": "1977-08-21",
-      "stop": "2031-01-01",
-      "query": "format=text&COMMAND=%27-32%27&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=500%4010&REF_PLANE=FRAME&REF_SYSTEM=ICRF&VEC_CORR=NONE&OUT_UNITS=AU-D&TIME_TYPE=TDB&START_TIME=%271977-08-21%27&STOP_TIME=%272031-01-01%27&STEP_SIZE=%2730+d%27&VEC_TABLE=3&OBJ_DATA=NO",
-      "rawSha256": "4adc1ca644190939bb9cb1c43598f064431852d69fe3d9b6398bbc8cfa9e2c39",
-      "sampleCount": 650,
+      "stop": "2051-01-15",
+      "query": "format=text&COMMAND=%27-32%27&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=500%4010&REF_PLANE=FRAME&REF_SYSTEM=ICRF&VEC_CORR=NONE&OUT_UNITS=AU-D&TIME_TYPE=TDB&START_TIME=%271977-08-21%27&STOP_TIME=%272051-01-15%27&STEP_SIZE=%2730+d%27&VEC_TABLE=3&OBJ_DATA=NO",
+      "rawSha256": "ecb8691718575567fab4d3c5a45080d818d9ef3cd56b64167e3a9d62b534cd28",
+      "sampleCount": 894,
       "firstJdTdb": 2443376.5,
-      "lastJdTdb": 2462846.5
+      "lastJdTdb": 2470166.5
+    },
+    {
+      "id": "pioneer10",
+      "command": "-23",
+      "start": "1972-03-04",
+      "stop": "2050-01-01",
+      "query": "format=text&COMMAND=%27-23%27&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=500%4010&REF_PLANE=FRAME&REF_SYSTEM=ICRF&VEC_CORR=NONE&OUT_UNITS=AU-D&TIME_TYPE=TDB&START_TIME=%271972-03-04%27&STOP_TIME=%272050-01-01%27&STEP_SIZE=%2730+d%27&VEC_TABLE=3&OBJ_DATA=NO",
+      "rawSha256": "5cfc86b860870271c6e753437d4514422ec2eac595a98ab06cefda5185970b65",
+      "sampleCount": 948,
+      "firstJdTdb": 2441380.5,
+      "lastJdTdb": 2469790.5
     },
     {
       "id": "newhorizons",
       "command": "-98",
       "start": "2006-01-20",
-      "stop": "2031-01-01",
-      "query": "format=text&COMMAND=%27-98%27&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=500%4010&REF_PLANE=FRAME&REF_SYSTEM=ICRF&VEC_CORR=NONE&OUT_UNITS=AU-D&TIME_TYPE=TDB&START_TIME=%272006-01-20%27&STOP_TIME=%272031-01-01%27&STEP_SIZE=%2730+d%27&VEC_TABLE=3&OBJ_DATA=NO",
-      "rawSha256": "68a45988145d2cd930b788e13cbcb73cd64c03d2a2dfdc63500cb7deb3491525",
-      "sampleCount": 304,
+      "stop": "2050-01-01",
+      "query": "format=text&COMMAND=%27-98%27&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=500%4010&REF_PLANE=FRAME&REF_SYSTEM=ICRF&VEC_CORR=NONE&OUT_UNITS=AU-D&TIME_TYPE=TDB&START_TIME=%272006-01-20%27&STOP_TIME=%272050-01-01%27&STEP_SIZE=%2730+d%27&VEC_TABLE=3&OBJ_DATA=NO",
+      "rawSha256": "e34f52049b42c29d443fb4edb26223f4f7012688c18394174db33437707b0b18",
+      "sampleCount": 536,
       "firstJdTdb": 2453755.5,
-      "lastJdTdb": 2462845.5
+      "lastJdTdb": 2469805.5
     }
   ]
 }
