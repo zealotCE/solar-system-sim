@@ -10,7 +10,26 @@ export function formatSimTime(years: number): string {
   const safe = Math.max(0, years)
   const y = Math.floor(safe)
   const days = Math.floor((safe - y) * 365.25)
-  return `${y} 年 ${days} 天`
+  return `T+${y.toString().padStart(2, '0')}Y ${days.toString().padStart(3, '0')}D`
+}
+
+export function formatSimDate(years: number): string {
+  const epoch = Date.UTC(2026, 0, 1, 12)
+  const date = new Date(epoch + Math.max(0, years) * 365.25 * 24 * 60 * 60 * 1000)
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'UTC',
+  })
+    .format(date)
+    .replaceAll('/', '.')
+}
+
+export function formatSpeed(speed: number): string {
+  if (speed >= 10) return speed.toFixed(0)
+  if (speed >= 1) return Number.isInteger(speed) ? speed.toFixed(0) : speed.toFixed(1)
+  return speed.toFixed(2)
 }
 
 export function formatDays(days: number): string {

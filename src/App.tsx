@@ -32,11 +32,13 @@ class SceneErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
 export default function App() {
   return (
     <SimulationProvider>
-      <main className="relative h-dvh w-full overflow-hidden bg-[#02060f]">
+      <main className="app-shell relative h-dvh w-full overflow-hidden bg-[#02060f]">
         <SceneErrorBoundary>
           <SolarSystem />
         </SceneErrorBoundary>
         <div className="space-vignette pointer-events-none absolute inset-0" />
+        <div className="chromatic-haze pointer-events-none absolute inset-0" />
+        <div className="scanline-overlay pointer-events-none absolute inset-0" />
         <ControlPanel />
       </main>
     </SimulationProvider>

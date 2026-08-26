@@ -1,0 +1,8 @@
+services:
+  solar-system:
+    build: .
+    image: solar-system-sim:latest
+    container_name: solar-system-sim
+    ports:
+      - '4317:80'
+    restart: unless-stopped

@@ -1,12 +1,13 @@
 import { Html } from '@react-three/drei'
-import { useMemo, useRef } from 'react'
+import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
-import { getPlanetPosition, type PlanetData } from '@/data/planets'
+import { getPlanetPosition, getPlanetVisualRadius, type PlanetData } from '@/data/planets'
 import { useSimulation } from '@/hooks/useSimulation'
-import { getPlanetTexture, getRingTexture } from '@/lib/planetTextures'
+import { EARTH_CLOUDS_URL, useBodySurface, useFileTexture } from '@/lib/textureAssets'
 import { Moon } from './Moon'
+import { PlanetRings } from './PlanetRings'
 
 type PlanetProps = {
   planet: PlanetData
@@ -14,75 +15,154 @@ type PlanetProps = {
 
 export function Planet({ planet }: PlanetProps) {
   const groupRef = useRef<THREE.Group>(null)
+  const visualRef = useRef<THREE.Group>(null)
   const meshRef = useRef<THREE.Mesh>(null)
-  const { simTimeRef, selectPlanet, selectedPlanetId, showLabels } = useSimulation()
-  const texture = useMemo(
-    () => getPlanetTexture(planet.id, planet.textureKind, planet.color),
-    [planet.color, planet.id, planet.textureKind],
+  const cloudsRef = useRef<THREE.Mesh>(null)
+  const {
+    simTimeRef,
+    selectPlanet,
+    selectedPlanetId,
+    showLabels,
+    planetScale,
+    orbitScale,
+    eccentricityScale,
+    inclinationScale,
+    usePhotoTextures,
+    trueScale,
+  } = useSimulation()
+  const { texture, isPhoto } = useBodySurface(
+    planet.id,
+    planet.textureKind,
+    planet.color,
+    usePhotoTextures,
   )
-  const ringTexture = useMemo(() => (planet.hasRings ? getRingTexture() : null), [planet.hasRings])
+  const cloudsTexture = useFileTexture(
+    planet.id === 'earth' && usePhotoTextures ? EARTH_CLOUDS_URL : null,
+    false,
+  )
   const selected = selectedPlanetId === planet.id
+  const radius = getPlanetVisualRadius(planet, trueScale)
 
   useFrame(() => {
-    if (!groupRef.current || !meshRef.current) return
-    const [x, y, z] = getPlanetPosition(planet, simTimeRef.current)
+    if (!groupRef.current || !meshRef.current || !visualRef.current) return
+    const [x, y, z] = getPlanetPosition(planet, simTimeRef.current, {
+      orbitScale,
+      eccentricityScale,
+      inclinationScale,
+      trueScale,
+    })
     groupRef.current.position.set(x, y, z)
-    meshRef.current.rotation.y = (simTimeRef.current * 365.25 * Math.PI * 2) / planet.rotationPeriod
+    const spin = (simTimeRef.current * 365.25 * Math.PI * 2) / planet.rotationPeriod
+    meshRef.current.rotation.y = spin
+    if (cloudsRef.current) cloudsRef.current.rotation.y = spin * 1.24
+    const targetScale = planetScale * (selected ? 1.08 : 1)
+    const nextScale = THREE.MathUtils.lerp(visualRef.current.scale.x, targetScale, 0.09)
+    visualRef.current.scale.setScalar(nextScale)
   })
 
-  const ringInner = planet.id === 'uranus' ? planet.radius * 1.35 : planet.radius * 1.28
-  const ringOuter = planet.id === 'uranus' ? planet.radius * 1.85 : planet.radius * 2.25
+  const ringInner = planet.id === 'uranus' ? radius * 1.35 : radius * 1.28
+  const ringOuter = planet.id === 'uranus' ? radius * 1.85 : radius * 2.25
+  const atmosphereOpacity =
+    planet.id === 'earth' ? 0.16 : planet.id === 'venus' ? 0.11 : planet.textureKind === 'rocky' ? 0.04 : 0.075
 
   return (
     <group ref={groupRef}>
-      <mesh
-        ref={meshRef}
-        onClick={(event) => {
-          event.stopPropagation()
-          selectPlanet(planet.id)
-        }}
-        onPointerOver={() => {
-          document.body.style.cursor = 'pointer'
-        }}
-        onPointerOut={() => {
-          document.body.style.cursor = 'auto'
-        }}
-      >
-        <sphereGeometry args={[planet.radius, 48, 48]} />
-        <meshStandardMaterial
-          map={texture}
-          color={planet.color}
-          emissive={planet.emissive}
-          emissiveIntensity={selected ? 0.55 : 0.18}
-          roughness={planet.textureKind === 'gas' ? 0.62 : 0.86}
-          metalness={0.06}
-        />
-      </mesh>
-
-      {planet.hasRings && ringTexture ? (
+      <group ref={visualRef} rotation={[0, 0, planet.axialTilt]}>
         <mesh
-          rotation={
-            planet.id === 'uranus' ? [Math.PI / 2.05, 0, Math.PI / 2.2] : [Math.PI / 2.12, 0, 0.15]
-          }
+          ref={meshRef}
+          onClick={(event) => {
+            event.stopPropagation()
+            selectPlanet(planet.id)
+          }}
+          onPointerOver={() => {
+            document.body.style.cursor = 'pointer'
+          }}
+          onPointerOut={() => {
+            document.body.style.cursor = 'auto'
+          }}
         >
-          <ringGeometry args={[ringInner, ringOuter, 96]} />
+          <sphereGeometry args={[radius, 64, 64]} />
           <meshStandardMaterial
-            map={ringTexture}
-            transparent
-            opacity={planet.id === 'uranus' ? 0.28 : 0.78}
-            side={THREE.DoubleSide}
-            depthWrite={false}
-            roughness={0.7}
-            metalness={0.15}
+            map={texture}
+            color={isPhoto ? '#ffffff' : planet.color}
+            emissive={planet.emissive}
+            emissiveIntensity={isPhoto ? (selected ? 0.34 : 0.05) : selected ? 0.62 : 0.16}
+            roughness={planet.textureKind === 'gas' ? 0.58 : 0.84}
+            metalness={0.035}
           />
         </mesh>
-      ) : null}
 
-      {planet.id === 'earth' ? <Moon /> : null}
+        {planet.id === 'earth' && cloudsTexture ? (
+          <mesh ref={cloudsRef} scale={1.016}>
+            <sphereGeometry args={[radius, 48, 48]} />
+            <meshStandardMaterial
+              color="#ffffff"
+              alphaMap={cloudsTexture}
+              transparent
+              opacity={0.88}
+              depthWrite={false}
+              roughness={1}
+              metalness={0}
+            />
+          </mesh>
+        ) : null}
+
+        <mesh scale={1.035}>
+          <sphereGeometry args={[radius, 48, 48]} />
+          <meshBasicMaterial
+            color={planet.color}
+            transparent
+            opacity={atmosphereOpacity}
+            side={THREE.BackSide}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </mesh>
+
+        {planet.hasRings ? (
+          <PlanetRings
+            variant={planet.id === 'uranus' ? 'uranus' : 'saturn'}
+            innerRadius={ringInner}
+            outerRadius={ringOuter}
+            rotation={
+              planet.id === 'uranus' ? [Math.PI / 2.05, 0, Math.PI / 2.2] : [Math.PI / 2, 0, 0.08]
+            }
+          />
+        ) : null}
+
+        {selected ? (
+          <group>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[radius * 1.52, radius * 0.018, 8, 96]} />
+              <meshBasicMaterial
+                color="#ffd98a"
+                transparent
+                opacity={0.82}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </mesh>
+            <pointLight color={planet.color} intensity={2.5} distance={radius * 7} decay={2} />
+          </group>
+        ) : null}
+      </group>
+
+      {planet.moons.map((moon) => (
+        <Moon key={moon.id} moon={moon} parent={planet} />
+      ))}
 
       {showLabels ? (
-        <Html center distanceFactor={16} style={{ pointerEvents: 'none' }} position={[0, planet.radius + 0.35, 0]}>
-          <div className={`planet-label ${selected ? 'planet-label-active' : ''}`}>{planet.name}</div>
+        <Html
+          center
+          zIndexRange={[12, 0]}
+          style={{ pointerEvents: 'none' }}
+          position={[0, radius * planetScale + (trueScale ? 0.2 : 0.58), 0]}
+        >
+          <div className={`planet-label ${selected ? 'planet-label-active' : ''}`}>
+            <span className="planet-label-dot" style={{ backgroundColor: planet.color }} />
+            <span>{planet.name}</span>
+            {selected ? <span className="planet-label-code">{planet.id.toUpperCase()}</span> : null}
+          </div>
         </Html>
       ) : null}
     </group>

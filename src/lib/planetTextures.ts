@@ -193,10 +193,13 @@ export function getGlowTexture(): THREE.CanvasTexture {
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas 2D unavailable')
 
+  // Fast falloff: a slow-decaying veil tints background stars orange and its
+  // edge reads as a faint circular "mask" at some zoom levels.
   const gradient = ctx.createRadialGradient(128, 128, 8, 128, 128, 128)
   gradient.addColorStop(0, 'rgba(255, 244, 200, 1)')
-  gradient.addColorStop(0.18, 'rgba(255, 196, 80, 0.85)')
-  gradient.addColorStop(0.42, 'rgba(255, 120, 32, 0.28)')
+  gradient.addColorStop(0.16, 'rgba(255, 196, 80, 0.82)')
+  gradient.addColorStop(0.36, 'rgba(255, 130, 36, 0.22)')
+  gradient.addColorStop(0.62, 'rgba(255, 96, 12, 0.05)')
   gradient.addColorStop(1, 'rgba(255, 80, 0, 0)')
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, size, size)

@@ -1,0 +1,30 @@
+{
+  "generatedAt": "2026-08-25T13:21:54.656Z",
+  "endpoint": "https://ssd.jpl.nasa.gov/api/horizons.api",
+  "frame": "Sun-centered (500@10), geometric (VEC_CORR=NONE), ICRF reference plane/system, TDB, AU and AU/day",
+  "sampling": "30 days; first and last samples follow Horizons START_TIME and STOP_TIME inclusion",
+  "trajectories": [
+    {
+      "id": "voyager2",
+      "command": "-32",
+      "start": "1977-08-21",
+      "stop": "2031-01-01",
+      "query": "format=text&COMMAND=%27-32%27&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=500%4010&REF_PLANE=FRAME&REF_SYSTEM=ICRF&VEC_CORR=NONE&OUT_UNITS=AU-D&TIME_TYPE=TDB&START_TIME=%271977-08-21%27&STOP_TIME=%272031-01-01%27&STEP_SIZE=%2730+d%27&VEC_TABLE=3&OBJ_DATA=NO",
+      "rawSha256": "4adc1ca644190939bb9cb1c43598f064431852d69fe3d9b6398bbc8cfa9e2c39",
+      "sampleCount": 650,
+      "firstJdTdb": 2443376.5,
+      "lastJdTdb": 2462846.5
+    },
+    {
+      "id": "newhorizons",
+      "command": "-98",
+      "start": "2006-01-20",
+      "stop": "2031-01-01",
+      "query": "format=text&COMMAND=%27-98%27&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=500%4010&REF_PLANE=FRAME&REF_SYSTEM=ICRF&VEC_CORR=NONE&OUT_UNITS=AU-D&TIME_TYPE=TDB&START_TIME=%272006-01-20%27&STOP_TIME=%272031-01-01%27&STEP_SIZE=%2730+d%27&VEC_TABLE=3&OBJ_DATA=NO",
+      "rawSha256": "68a45988145d2cd930b788e13cbcb73cd64c03d2a2dfdc63500cb7deb3491525",
+      "sampleCount": 304,
+      "firstJdTdb": 2453755.5,
+      "lastJdTdb": 2462845.5
+    }
+  ]
+}

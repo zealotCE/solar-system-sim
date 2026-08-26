@@ -9,6 +9,7 @@ type OrbitLineProps = {
   eccentricity?: number
   inclination?: number
   color?: string
+  active?: boolean
 }
 
 export function OrbitLine({
@@ -16,6 +17,7 @@ export function OrbitLine({
   eccentricity = 0,
   inclination = 0,
   color = '#8aa0c2',
+  active = false,
 }: OrbitLineProps) {
   const points = useMemo(() => {
     const segments = 160
@@ -33,8 +35,8 @@ export function OrbitLine({
       points={points}
       color={color}
       transparent
-      opacity={0.28}
-      lineWidth={1}
+      opacity={active ? 0.72 : 0.2}
+      lineWidth={active ? 1.55 : 0.72}
       dashed={false}
     />
   )
