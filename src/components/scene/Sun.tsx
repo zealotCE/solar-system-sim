@@ -23,6 +23,7 @@ export function Sun() {
     bloomStrength,
     usePhotoTextures,
     trueScale,
+    englishOnly,
   } = useSimulation()
   const { texture, isPhoto } = useBodySurface(SUN.id, 'star', SUN.color, usePhotoTextures)
   const glow = useMemo(() => getGlowTexture(), [])
@@ -32,7 +33,7 @@ export function Sun() {
     if (!coreRef.current || !visualRef.current) return
     coreRef.current.rotation.y = (simTimeRef.current * 365.25 * Math.PI * 2) / SUN.rotationPeriod
     const selected = selectedPlanetId === SUN.id
-    const targetScale = planetScale * (selected ? 1.045 : 1)
+    const targetScale = planetScale * (selected && !trueScale ? 1.045 : 1)
     const nextScale = THREE.MathUtils.lerp(visualRef.current.scale.x, targetScale, 0.075)
     visualRef.current.scale.setScalar(nextScale)
 
@@ -101,7 +102,7 @@ export function Sun() {
               color="#ffffff"
               emissive="#ffb347"
               emissiveMap={texture}
-              emissiveIntensity={selected ? 2.7 : 2.05}
+              emissiveIntensity={selected ? 1.5 : 1.15}
               transparent={false}
               opacity={1}
               depthTest
@@ -114,7 +115,7 @@ export function Sun() {
               map={texture}
               color={SUN.color}
               emissive={SUN.emissive}
-              emissiveIntensity={selected ? 3.8 : 2.85}
+              emissiveIntensity={selected ? 2.05 : 1.55}
               transparent={false}
               opacity={1}
               depthTest
@@ -142,11 +143,11 @@ export function Sun() {
             blending={THREE.AdditiveBlending}
             transparent
             depthWrite={false}
-            opacity={Math.min(1, 0.72 + bloomStrength * 0.16)}
+            opacity={Math.min(0.72, 0.4 + bloomStrength * 0.1)}
           />
         </sprite>
 
-        {selected ? (
+        {selected && !trueScale ? (
           <>
             <mesh rotation={[Math.PI / 2, 0, 0]}>
               <torusGeometry args={[radius * 1.28, radius * 0.0125, 12, 128]} />
@@ -166,8 +167,18 @@ export function Sun() {
         ) : null}
       </group>
 
-      <pointLight color="#ffd7a0" intensity={180} distance={160} decay={1.15} />
-      <pointLight color="#ff9a3c" intensity={40} distance={28} decay={2} />
+      <pointLight
+        color="#fff0d4"
+        intensity={trueScale ? 8 : 50}
+        distance={trueScale ? 520 : 240}
+        decay={trueScale ? 2 : 1.35}
+      />
+      <pointLight
+        color="#ffb56b"
+        intensity={trueScale ? 0.7 : 3}
+        distance={trueScale ? 80 : 36}
+        decay={2}
+      />
 
       {showLabels ? (
         <Html
@@ -178,7 +189,7 @@ export function Sun() {
         >
           <div className={`planet-label sun-label ${selected ? 'planet-label-active' : ''}`}>
             <span className="planet-label-dot bg-amber-300" />
-            太阳
+            {englishOnly ? SUN.englishName : SUN.name}
             {selected ? <span className="planet-label-code">G2V</span> : null}
           </div>
         </Html>

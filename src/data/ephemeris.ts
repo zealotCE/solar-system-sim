@@ -51,7 +51,11 @@ function normalizeDeg(value: number): number {
  * Heliocentric position in the J2000 mean-ecliptic frame, in AU.
  * +X toward the vernal equinox, +Z toward the north ecliptic pole.
  */
-export function getPlanetEclipticAu(planetId: string, jdTdb: number): [number, number, number] {
+export function getPlanetEclipticAu(
+  planetId: string,
+  jdTdb: number,
+  meanAnomalyOverride?: number,
+): [number, number, number] {
   const row = TABLE1[planetId]
   if (!row) return [0, 0, 0]
   const centuries = (jdTdb - J2000_JD) / 36525
@@ -64,7 +68,8 @@ export function getPlanetEclipticAu(planetId: string, jdTdb: number): [number, n
   const nodeLongitude = (row[10] + row[11] * centuries) * DEG
 
   const argPerihelion = perihelionLongitude * DEG - nodeLongitude
-  const meanAnomaly = normalizeDeg(meanLongitude - perihelionLongitude) * DEG
+  const meanAnomaly =
+    meanAnomalyOverride ?? normalizeDeg(meanLongitude - perihelionLongitude) * DEG
 
   // Kepler's equation, Newton iterations (converges fast even for Pluto e≈0.25).
   let eccentricAnomaly = meanAnomaly + e * Math.sin(meanAnomaly)

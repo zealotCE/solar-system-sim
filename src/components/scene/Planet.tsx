@@ -31,6 +31,7 @@ export function Planet({ planet }: PlanetProps) {
     inclinationScale,
     usePhotoTextures,
     trueScale,
+    englishOnly,
   } = useSimulation()
   const { texture, isPhoto } = useBodySurface(
     planet.id,
@@ -57,7 +58,7 @@ export function Planet({ planet }: PlanetProps) {
     const spin = (simTimeRef.current * 365.25 * Math.PI * 2) / planet.rotationPeriod
     meshRef.current.rotation.y = spin
     if (cloudsRef.current) cloudsRef.current.rotation.y = spin * 1.24
-    const targetScale = planetScale * (selected ? 1.08 : 1)
+    const targetScale = planetScale * (selected && !trueScale ? 1.08 : 1)
     const nextScale = THREE.MathUtils.lerp(visualRef.current.scale.x, targetScale, 0.09)
     visualRef.current.scale.setScalar(nextScale)
 
@@ -116,7 +117,7 @@ export function Planet({ planet }: PlanetProps) {
             map={texture}
             color={isPhoto ? '#ffffff' : planet.color}
             emissive={planet.emissive}
-            emissiveIntensity={isPhoto ? (selected ? 0.34 : 0.05) : selected ? 0.62 : 0.16}
+            emissiveIntensity={isPhoto ? (selected ? 0.12 : 0.02) : selected ? 0.26 : 0.06}
             transparent={false}
             opacity={1}
             depthTest
@@ -164,7 +165,7 @@ export function Planet({ planet }: PlanetProps) {
           />
         ) : null}
 
-        {selected ? (
+        {selected && !trueScale ? (
           <group>
             <mesh rotation={[Math.PI / 2, 0, 0]}>
               <torusGeometry args={[radius * 1.52, radius * 0.018, 8, 96]} />
@@ -176,7 +177,6 @@ export function Planet({ planet }: PlanetProps) {
                 depthWrite={false}
               />
             </mesh>
-            <pointLight color={planet.color} intensity={2.5} distance={radius * 7} decay={2} />
           </group>
         ) : null}
       </group>
@@ -188,13 +188,14 @@ export function Planet({ planet }: PlanetProps) {
       {showLabels ? (
         <Html
           center
+          eps={0.25}
           zIndexRange={[12, 0]}
           style={{ pointerEvents: 'none' }}
           position={[0, trueScale ? radius * 2.4 : radius * planetScale + 0.58, 0]}
         >
           <div className={`planet-label ${selected ? 'planet-label-active' : ''}`}>
             <span className="planet-label-dot" style={{ backgroundColor: planet.color }} />
-            <span>{planet.name}</span>
+            <span>{englishOnly ? planet.englishName : planet.name}</span>
             {selected ? <span className="planet-label-code">{planet.id.toUpperCase()}</span> : null}
           </div>
         </Html>

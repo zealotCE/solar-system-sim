@@ -152,7 +152,9 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
     trueScale,
     setTrueScale,
     pureChinese,
+    englishOnly,
   } = useSimulation()
+  const text = (chinese: string, english: string) => (englishOnly ? english : chinese)
 
   return (
     <div className={cn('space-y-5', compact ? 'px-1 pb-4' : 'p-4')}>
@@ -169,15 +171,23 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
           </span>
           <span className="min-w-0 flex-1 text-left">
             <span className="flex items-center gap-2">
-              <span className="text-[13px] font-medium text-slate-100">真实比例模式</span>
+              <span className="text-[13px] font-medium text-slate-100">
+                {text('真实比例模式', 'TRUE-SCALE MODE')}
+              </span>
               <span className="font-display text-[7px] tracking-[0.16em] text-amber-200/60">
                 {pureChinese ? '真实比例' : 'TRUE SCALE'}
               </span>
             </span>
             <span className="mt-0.5 block text-[10px] leading-relaxed text-slate-500">
               {trueScale
-                ? '严格同比例：半径与轨道共用同一 km 比例尺，无任何体积放大；小天体以屏幕标记辅助定位与点击'
-                : '当前为艺术化比例：外侧轨道压缩、天体放大以便观赏'}
+                ? text(
+                    '严格同比例：实体与轨道共用同一 km 比例尺；航天器识别模型随缩放变化并设可读上下限，准心仅标记未选中目标',
+                    'Strict physical scale: entities and orbits share one kilometre mapping; spacecraft identification models respond to zoom within readability bounds.',
+                  )
+                : text(
+                    '当前为艺术化比例：外侧轨道压缩、天体放大以便观赏',
+                    'Stylized scale: outer orbits are compressed and bodies enlarged for readability.',
+                  )}
             </span>
           </span>
           <span className="toggle-track">
@@ -190,11 +200,13 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
         <div className="mb-2.5 flex items-center justify-between">
           <div>
             <p className="eyebrow">{pureChinese ? '场景配置' : 'SCENE PROFILE'}</p>
-            <h3 className="mt-1 text-sm font-medium text-slate-100">观测预设</h3>
+            <h3 className="mt-1 text-sm font-medium text-slate-100">
+              {text('观测预设', 'OBSERVATION PRESETS')}
+            </h3>
           </div>
           <span className="status-chip">
             <span className="status-dot" />
-            {scenePreset === 'custom' ? '自定义' : '已同步'}
+            {scenePreset === 'custom' ? text('自定义', 'CUSTOM') : text('已同步', 'SYNCED')}
           </span>
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -212,7 +224,9 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
                   <Icon className="size-4" />
                   {active ? <Check className="size-3.5 text-amber-200" /> : null}
                 </span>
-                <span className="mt-3 block text-left text-xs font-medium">{name}</span>
+                <span className="mt-3 block text-left text-xs font-medium">
+                  {englishOnly ? code : name}
+                </span>
                 <span className="mt-0.5 block text-left font-display text-[8px] tracking-[0.14em] opacity-45">
                   {pureChinese ? name : code}
                 </span>
@@ -224,14 +238,18 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
 
       <section>
         <div className="section-rule">
-          <span>轨道参数</span>
+          <span>{text('轨道参数', 'ORBIT PARAMETERS')}</span>
           <span>{pureChinese ? '轨道模型' : 'ORBIT MODEL'}</span>
         </div>
         <div className="space-y-2.5">
           <NumberControl
             icon={CircleDot}
-            label="天体显示比例"
-            hint={trueScale ? '真实比例模式下锁定为 1×（物理量不可调）' : '仅改变可视尺寸，不影响轨道参数；航天器仍为示意尺寸'}
+            label={text('天体显示比例', 'BODY DISPLAY SCALE')}
+            hint={
+              trueScale
+                ? text('真实比例模式下锁定为 1×（物理量不可调）', 'Locked to 1× in true-scale mode.')
+                : text('仅改变可视尺寸，不影响轨道参数；航天器仍为示意尺寸', 'Changes visual size only; orbital parameters are unaffected.')
+            }
             value={planetScale}
             valueLabel={`${planetScale.toFixed(2)}×`}
             min={0.65}
@@ -242,8 +260,8 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
           />
           <NumberControl
             icon={Orbit}
-            label="轨道跨度"
-            hint={trueScale ? '真实比例模式下锁定为 1×（物理量不可调）' : '压缩或展开整个行星系统'}
+            label={text('轨道跨度', 'ORBIT SPAN')}
+            hint={trueScale ? text('真实比例模式下锁定为 1×（物理量不可调）', 'Locked to 1× in true-scale mode.') : text('压缩或展开整个行星系统', 'Compress or expand the planetary system.')}
             value={orbitScale}
             valueLabel={`${orbitScale.toFixed(2)}×`}
             min={0.72}
@@ -254,8 +272,8 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
           />
           <NumberControl
             icon={Waypoints}
-            label="轨道偏心率"
-            hint={trueScale ? '真实比例模式下锁定为 1×（物理量不可调）' : '增强椭圆程度与近日点速度差'}
+            label={text('轨道偏心率', 'ORBIT ECCENTRICITY')}
+            hint={trueScale ? text('真实比例模式下锁定为 1×（物理量不可调）', 'Locked to 1× in true-scale mode.') : text('增强椭圆程度与近日点速度差', 'Emphasize orbital ellipticity and perihelion speed variation.')}
             value={eccentricityScale}
             valueLabel={`${eccentricityScale.toFixed(2)}×`}
             min={0}
@@ -266,8 +284,8 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
           />
           <NumberControl
             icon={Rotate3D}
-            label="轨道倾角"
-            hint={trueScale ? '真实比例模式下锁定为 1×（物理量不可调）' : '放大各行星相对黄道面的倾斜'}
+            label={text('轨道倾角', 'ORBIT INCLINATION')}
+            hint={trueScale ? text('真实比例模式下锁定为 1×（物理量不可调）', 'Locked to 1× in true-scale mode.') : text('放大各行星相对黄道面的倾斜', 'Emphasize inclination relative to the ecliptic.')}
             value={inclinationScale}
             valueLabel={`${inclinationScale.toFixed(2)}×`}
             min={0}
@@ -281,14 +299,14 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
 
       <section>
         <div className="section-rule">
-          <span>视觉环境</span>
+          <span>{text('视觉环境', 'VISUAL ENVIRONMENT')}</span>
           <span>{pureChinese ? '渲染环境' : 'RENDER FIELD'}</span>
         </div>
         <div className="space-y-2.5">
           <NumberControl
             icon={Sparkles}
-            label="深空亮度"
-            hint="调整星野、银河尘埃与星云"
+            label={text('深空亮度', 'DEEP-SPACE BRIGHTNESS')}
+            hint={text('调整星野、银河尘埃与星云', 'Adjust stars, Milky Way dust, and nebulae.')}
             value={starBrightness}
             valueLabel={`${Math.round(starBrightness * 100)}%`}
             min={0.2}
@@ -298,8 +316,8 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
           />
           <NumberControl
             icon={SunMedium}
-            label="日冕辉光"
-            hint="调整恒星光晕与高光扩散"
+            label={text('日冕辉光', 'CORONAL BLOOM')}
+            hint={text('调整恒星光晕与高光扩散', 'Adjust stellar halos and highlight diffusion.')}
             value={bloomStrength}
             valueLabel={`${Math.round(bloomStrength * 100)}%`}
             min={0.1}
@@ -313,36 +331,36 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
       <section className="space-y-2">
         <ToggleRow
           icon={Image}
-          label="真实贴图"
-          description="使用 NASA 实拍级贴图渲染天体，低配设备可关闭"
+          label={text('真实贴图', 'PHOTOGRAPHIC TEXTURES')}
+          description={text('使用 NASA 实拍级贴图渲染天体，低配设备可关闭', 'Use survey-derived textures; disable on lower-power devices.')}
           enabled={usePhotoTextures}
           onChange={setUsePhotoTextures}
         />
         <ToggleRow
           icon={Boxes}
-          label="小行星带"
-          description="显示火星与木星之间的碎石群"
+          label={text('小行星带', 'ASTEROID BELT')}
+          description={text('显示火星与木星之间的碎石群', 'Show the debris population between Mars and Jupiter.')}
           enabled={showAsteroids}
           onChange={setShowAsteroids}
         />
         <ToggleRow
           icon={Rocket}
-          label="人类航天器"
-          description="显示旅行者、韦伯、空间站等任务标记"
+          label={text('人类航天器', 'SPACECRAFT')}
+          description={text('显示旅行者、韦伯、空间站等任务标记', 'Show mission markers for probes, telescopes, and stations.')}
           enabled={showSpacecraft}
           onChange={setShowSpacecraft}
         />
         <ToggleRow
           icon={Waypoints}
-          label="黄道参考网格"
-          description="显示轨道方位与距离参考线"
+          label={text('黄道参考网格', 'ECLIPTIC REFERENCE GRID')}
+          description={text('显示轨道方位与距离参考线', 'Show orbital bearing and distance guides.')}
           enabled={showEcliptic}
           onChange={setShowEcliptic}
         />
         <ToggleRow
           icon={Rotate3D}
-          label="自动巡航"
-          description="让镜头围绕太阳系缓慢旋转"
+          label={text('自动巡航', 'AUTO CRUISE')}
+          description={text('让镜头围绕太阳系缓慢旋转', 'Slowly rotate the camera around the Solar System.')}
           enabled={autoRotate}
           onChange={setAutoRotate}
         />

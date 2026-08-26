@@ -4,8 +4,10 @@ import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 
 import { PLANETS, SUN, findMoonById, type TextureKind } from '@/data/planets'
+import { getMinorBodyById, type MinorBodyData } from '@/data/minorBodies'
 import { getSpacecraftById, type SpacecraftData } from '@/data/spacecraft'
 import { getGlowTexture } from '@/lib/planetTextures'
+import { getMinorBodyModel } from '@/lib/minorBodyModels'
 import { getCraftModel } from '@/lib/spacecraftModels'
 import { useBodySurface } from '@/lib/textureAssets'
 import { CraftGlbModel } from '@/components/scene/CraftGlbModel'
@@ -31,6 +33,16 @@ function getBodySpec(id: string): BodySpec {
       emissive: '#1a1816',
       ringVariant: null,
       axialTilt: 0.03,
+    }
+  }
+  const minorBody = getMinorBodyById(id)
+  if (minorBody) {
+    return {
+      kind: 'rocky',
+      color: minorBody.color,
+      emissive: '#17130f',
+      ringVariant: null,
+      axialTilt: 0.18,
     }
   }
   const planet = PLANETS.find((item) => item.id === id) ?? PLANETS[2]
@@ -369,8 +381,40 @@ function PreviewBody({ id }: { id: string }) {
   )
 }
 
+function PreviewMinorBody({ body }: { body: MinorBodyData }) {
+  const spinRef = useRef<THREE.Group>(null)
+  const official = getMinorBodyModel(body.id)
+  useFrame((_, delta) => {
+    if (spinRef.current) {
+      spinRef.current.rotation.y += delta * 0.25
+      spinRef.current.rotation.x = 0.18
+    }
+  })
+  return (
+    <group scale={0.95} ref={spinRef}>
+      {official ? (
+        <CraftGlbModel url={official.url} fitRadius={0.82} />
+      ) : (
+        <mesh scale={body.shapeScale}>
+          <dodecahedronGeometry args={[0.82, 3]} />
+          <meshStandardMaterial
+            color={body.color}
+            roughness={0.92}
+            metalness={body.id === 'psyche16' ? 0.28 : 0.03}
+          />
+        </mesh>
+      )}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.78, 0]}>
+        <ringGeometry args={[0.58, 0.6, 64]} />
+        <meshBasicMaterial color={body.color} transparent opacity={0.32} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  )
+}
+
 export function BodyPreview({ bodyId }: { bodyId: string }) {
   const craft = getSpacecraftById(bodyId)
+  const minorBody = getMinorBodyById(bodyId)
 
   return (
     <Canvas
@@ -391,7 +435,13 @@ export function BodyPreview({ bodyId }: { bodyId: string }) {
         intensity={craft ? 0.28 : 1.1}
         color="#6aa7c2"
       />
-      {craft ? <CraftModel craft={craft} /> : <PreviewBody id={bodyId} />}
+      {craft ? (
+        <CraftModel craft={craft} />
+      ) : minorBody ? (
+        <PreviewMinorBody body={minorBody} />
+      ) : (
+        <PreviewBody id={bodyId} />
+      )}
       <OrbitControls
         enableZoom={false}
         enablePan={false}

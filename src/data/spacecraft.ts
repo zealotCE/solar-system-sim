@@ -45,6 +45,8 @@ export type SpacecraftData = {
   agency: string
   /** UTC calendar date on which this craft (or station's first module) launched. */
   launchDate: string
+  /** Last UTC date the intact craft existed in flight; omitted for surviving hardware. */
+  sceneEndDate?: string
   launchYear: number
   /** Maximum deployed physical span in metres, used by strict true-scale rendering. */
   maxSpanM: number
@@ -52,9 +54,11 @@ export type SpacecraftData = {
   kind: SpacecraftKind
   color: string
   description: string
+  descriptionEn: string
   provenance: SpacecraftProvenance
   velocityKms?: number
   orbitNote?: string
+  orbitNoteEn?: string
   /** Offline Sun-centered geometric ICRF/TDB Cartesian samples, if available. */
   trajectory?: readonly HorizonsVectorSample[]
   /** Orbiting craft: anchor body plus simplified Kepler elements (scene units). */
@@ -105,7 +109,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     launchDate: '1977-09-05',
     launchYear: 1977,
     // 13 m magnetometer boom plus the ~4 m spacecraft body.
-    maxSpanM: 17,
+    maxSpanM: 11,
     status: '在役',
     kind: 'deep-probe',
     color: '#7dd3fc',
@@ -114,6 +118,8 @@ export const SPACECRAFT: SpacecraftData[] = [
     velocityKms: 17,
     description:
       '人类飞得最远的造物。1977 年出发，先后飞掠木星与土星，1990 年回望拍下「暗淡蓝点」，2012 年跨过日球层顶进入星际空间。它携带的金唱片仍在替人类向银河致意。',
+    descriptionEn:
+      'Humanity’s most distant spacecraft. Launched in 1977, it flew past Jupiter and Saturn, captured the Pale Blue Dot in 1990, and crossed the heliopause in 2012 with the Golden Record still aboard.',
   },
   {
     id: 'voyager2',
@@ -132,6 +138,8 @@ export const SPACECRAFT: SpacecraftData[] = [
     velocityKms: 15.4,
     description:
       '唯一造访过全部四颗巨行星的探测器：木星、土星、天王星、海王星的许多细节都由它首次揭示。2018 年进入星际空间，正朝着黄道面以南的深空远去。',
+    descriptionEn:
+      'The only spacecraft to visit all four giant planets, revealing many features of Jupiter, Saturn, Uranus, and Neptune for the first time. It entered interstellar space in 2018.',
   },
   {
     id: 'pioneer10',
@@ -151,6 +159,8 @@ export const SPACECRAFT: SpacecraftData[] = [
     velocityKms: 12,
     description:
       '第一个穿越小行星带、第一个飞掠木星的探测器。2003 年信号彻底消失，如今静默地飞向金牛座毕宿五方向——抵达那里还需要约两百万年。',
+    descriptionEn:
+      'The first spacecraft to cross the asteroid belt and fly past Jupiter. Contact ended in 2003; the silent probe now travels generally toward Aldebaran, a journey of roughly two million years.',
   },
   {
     id: 'newhorizons',
@@ -169,6 +179,187 @@ export const SPACECRAFT: SpacecraftData[] = [
     velocityKms: 13.8,
     description:
       '2015 年飞掠冥王星，传回心形冰原的著名影像；2019 年又造访柯伊伯带天体「天涯海角」。目前正穿越柯伊伯带外缘，继续研究太阳风与深空尘埃。',
+    descriptionEn:
+      'It revealed Pluto’s heart-shaped ice plains in 2015 and visited Arrokoth in 2019. New Horizons continues through the Kuiper Belt, studying the solar wind and deep-space dust.',
+  },
+  {
+    id: 'cassini',
+    name: '卡西尼号',
+    englishName: 'Cassini',
+    shortCode: 'CAS',
+    agency: 'NASA / ESA / ASI',
+    launchDate: '1997-10-15',
+    sceneEndDate: '2017-09-15',
+    launchYear: 1997,
+    maxSpanM: 11,
+    status: '静默',
+    kind: 'deep-probe',
+    color: '#f6c86b',
+    provenance: horizonsProvenance(
+      HORIZONS_TRAJECTORIES.cassini,
+      '1997-10-16 至 2017-09-01 TDB',
+    ),
+    trajectory: HORIZONS_TRAJECTORIES.cassini,
+    description:
+      '首个土星轨道器，在土星系统工作十三年。它发现了恩克拉多斯喷出的冰羽流、记录泰坦甲烷海，并以“壮丽终章”冲入土星大气保护潜在宜居卫星。',
+    descriptionEn:
+      'The first Saturn orbiter spent 13 years exploring the system. It revealed Enceladus’ icy plumes, mapped methane seas on Titan, and ended with a deliberate plunge into Saturn.',
+  },
+  {
+    id: 'galileo',
+    name: '伽利略号',
+    englishName: 'Galileo',
+    shortCode: 'GLL',
+    agency: 'NASA / DLR',
+    launchDate: '1989-10-18',
+    sceneEndDate: '2003-09-21',
+    launchYear: 1989,
+    maxSpanM: 17,
+    status: '静默',
+    kind: 'deep-probe',
+    color: '#d8b58a',
+    provenance: horizonsProvenance(
+      HORIZONS_TRAJECTORIES.galileo,
+      '1989-10-20 至 2003-09-07 TDB',
+    ),
+    trajectory: HORIZONS_TRAJECTORIES.galileo,
+    description:
+      '首个木星轨道器，也是首个向巨行星大气投放探测器的任务。它提供了欧罗巴地下海洋的重要证据，并近距离研究了木卫一火山与木星磁层。',
+    descriptionEn:
+      'The first Jupiter orbiter and the first mission to deploy a probe into a giant planet’s atmosphere. Galileo found key evidence for Europa’s subsurface ocean and studied Io’s volcanism.',
+  },
+  {
+    id: 'dawn',
+    name: '黎明号',
+    englishName: 'Dawn',
+    shortCode: 'DWN',
+    agency: 'NASA',
+    launchDate: '2007-09-27',
+    launchYear: 2007,
+    maxSpanM: 20,
+    status: '静默',
+    kind: 'deep-probe',
+    color: '#8fb7d8',
+    provenance: horizonsProvenance(
+      HORIZONS_TRAJECTORIES.dawn,
+      '2007-09-28 至 2043-10-19 TDB',
+    ),
+    trajectory: HORIZONS_TRAJECTORIES.dawn,
+    description:
+      '唯一先后环绕两个地外天体运行的航天器。离子推进让它能够离开灶神星再抵达谷神星，比较两个幸存原行星截然不同的演化道路。',
+    descriptionEn:
+      'The only spacecraft to orbit two extraterrestrial destinations. Ion propulsion let Dawn leave Vesta and reach Ceres, comparing two surviving protoplanets with very different histories.',
+  },
+  {
+    id: 'rosetta',
+    name: '罗塞塔号',
+    englishName: 'Rosetta',
+    shortCode: 'ROS',
+    agency: 'ESA / NASA',
+    launchDate: '2004-03-02',
+    sceneEndDate: '2016-09-30',
+    launchYear: 2004,
+    maxSpanM: 32,
+    status: '静默',
+    kind: 'deep-probe',
+    color: '#b6c4d6',
+    provenance: horizonsProvenance(
+      HORIZONS_TRAJECTORIES.rosetta,
+      '2004-03-03 至 2016-09-26 TDB',
+    ),
+    trajectory: HORIZONS_TRAJECTORIES.rosetta,
+    description:
+      '首个环绕彗星运行的任务，伴随 67P 彗星越过近日点，并释放菲莱完成首次彗核软着陆。任务最终以受控方式降落在彗星表面。',
+    descriptionEn:
+      'The first mission to orbit a comet escorted 67P through perihelion and deployed Philae for the first soft landing on a comet nucleus before ending on the surface.',
+  },
+  {
+    id: 'osirisrex',
+    name: 'OSIRIS-REx / OSIRIS-APEX',
+    englishName: 'OSIRIS-REx / OSIRIS-APEX',
+    shortCode: 'ORX',
+    agency: 'NASA / University of Arizona',
+    launchDate: '2016-09-08',
+    launchYear: 2016,
+    maxSpanM: 6.2,
+    status: '在役',
+    kind: 'deep-probe',
+    color: '#e3c07b',
+    provenance: horizonsProvenance(
+      HORIZONS_TRAJECTORIES.osirisrex,
+      '2016-09-09 至 2030-02-28 TDB',
+    ),
+    trajectory: HORIZONS_TRAJECTORIES.osirisrex,
+    description:
+      '完成美国首次小行星采样返回后，航天器更名 OSIRIS-APEX，继续飞往阿波菲斯，计划在其 2029 年近地飞掠后研究表面变化。',
+    descriptionEn:
+      'After completing the first U.S. asteroid sample return, the spacecraft became OSIRIS-APEX and continued toward Apophis to investigate changes after its 2029 Earth flyby.',
+  },
+  {
+    id: 'lucy',
+    name: '露西号',
+    englishName: 'Lucy',
+    shortCode: 'LCY',
+    agency: 'NASA / SwRI',
+    launchDate: '2021-10-16',
+    launchYear: 2021,
+    maxSpanM: 15.82,
+    status: '在役',
+    kind: 'deep-probe',
+    color: '#d6a8f0',
+    provenance: horizonsProvenance(
+      HORIZONS_TRAJECTORIES.lucy,
+      '2021-10-17 至 2033-03-18 TDB',
+    ),
+    trajectory: HORIZONS_TRAJECTORIES.lucy,
+    description:
+      '首个造访木星特洛伊小行星的任务，将飞掠多个不同光谱类型的原始小天体，以检验巨行星迁移和太阳系早期混合的模型。',
+    descriptionEn:
+      'The first mission to Jupiter’s Trojan asteroids will visit multiple primitive systems with different compositions, testing models of giant-planet migration and early Solar System mixing.',
+  },
+  {
+    id: 'psyche',
+    name: '灵神星号',
+    englishName: 'Psyche',
+    shortCode: 'PSY',
+    agency: 'NASA / ASU',
+    launchDate: '2023-10-13',
+    launchYear: 2023,
+    maxSpanM: 24.76,
+    status: '在役',
+    kind: 'deep-probe',
+    color: '#d99172',
+    provenance: horizonsProvenance(
+      HORIZONS_TRAJECTORIES.psyche,
+      '2023-10-14 至 2029-01-15 TDB',
+    ),
+    trajectory: HORIZONS_TRAJECTORIES.psyche,
+    description:
+      '正在前往富金属小行星 16 Psyche，计划测绘其组成、地形、重力和残余磁场，并携带深空光通信技术演示设备。',
+    descriptionEn:
+      'En route to metal-rich asteroid 16 Psyche, the mission will map its composition, geology, gravity, and remanent magnetism while demonstrating deep-space optical communications.',
+  },
+  {
+    id: 'europaclipper',
+    name: '欧罗巴快船',
+    englishName: 'Europa Clipper',
+    shortCode: 'ECL',
+    agency: 'NASA / JPL',
+    launchDate: '2024-10-14',
+    launchYear: 2024,
+    maxSpanM: 30.5,
+    status: '在役',
+    kind: 'deep-probe',
+    color: '#8bd8ff',
+    provenance: horizonsProvenance(
+      HORIZONS_TRAJECTORIES.europaclipper,
+      '2024-10-15 至 2034-08-24 TDB',
+    ),
+    trajectory: HORIZONS_TRAJECTORIES.europaclipper,
+    description:
+      'NASA 最大的行星际航天器，计划 2030 年抵达木星，通过约 49 次欧罗巴近飞研究冰壳、地下海洋、成分和潜在宜居环境。',
+    descriptionEn:
+      'NASA’s largest interplanetary spacecraft is scheduled to reach Jupiter in 2030 and use about 49 Europa flybys to investigate the ice shell, subsurface ocean, composition, and habitability.',
   },
   {
     id: 'parker',
@@ -199,8 +390,11 @@ export const SPACECRAFT: SpacecraftData[] = [
     inclination: 0.06,
     phase: 2.2,
     orbitNote: '近日点深入日冕',
+    orbitNoteEn: 'PERIHELION INSIDE THE SOLAR CORONA',
     description:
       '有史以来最快的人造物体，近日点距太阳表面仅约 610 万公里，反复穿越日冕采样太阳风。前方的白色隔热盾要抵御 1400°C 的炙烤。',
+    descriptionEn:
+      'The fastest human-made object repeatedly flies through the solar corona, approaching within about 6.1 million kilometres of the surface behind a heat shield built for extreme temperatures.',
   },
   {
     id: 'jwst',
@@ -224,8 +418,11 @@ export const SPACECRAFT: SpacecraftData[] = [
     },
     anchor: 'earth-l2',
     orbitNote: '日地拉格朗日 L2 点',
+    orbitNoteEn: 'SUN–EARTH L2 REGION',
     description:
       '6.5 米镀金主镜的红外旗舰，驻守在日地 L2 点背向太阳观测。它看见了宇宙最初几亿年的星系，也在改写行星大气与恒星诞生的教科书。',
+    descriptionEn:
+      'An infrared flagship with a 6.5-metre gold-coated mirror operating near Sun–Earth L2. Webb studies the first galaxies, exoplanet atmospheres, and the birth of stars and planets.',
   },
   {
     id: 'juno',
@@ -256,8 +453,11 @@ export const SPACECRAFT: SpacecraftData[] = [
     inclination: 1.05,
     phase: 0.6,
     orbitNote: '木星极轨椭圆轨道',
+    orbitNoteEn: 'POLAR, HIGHLY ELLIPTICAL JUPITER ORBIT',
     description:
       '沿大椭圆极轨反复俯冲木星云顶，测绘其引力场、磁场与大气深层结构，拍下了木星极区蓝色气旋群的惊人影像。',
+    descriptionEn:
+      'Juno repeatedly dives over Jupiter’s cloud tops in a highly elliptical polar orbit, mapping the planet’s gravity, magnetic field, deep atmosphere, and polar cyclones.',
   },
   // Representative low-Earth-orbit periods, not live TLE-derived positions.
   {
@@ -288,8 +488,11 @@ export const SPACECRAFT: SpacecraftData[] = [
     inclination: 0.5,
     phase: 1.1,
     orbitNote: '~540 km 近地轨道',
+    orbitNoteEn: '~540 km LOW EARTH ORBIT',
     description:
       '在轨三十余年的传奇。哈勃深场让人类第一次直视亿万星系构成的宇宙全景，它的观测帮助确定了宇宙的年龄与膨胀速度。',
+    descriptionEn:
+      'A landmark observatory operating for more than three decades. Hubble deep fields exposed a universe filled with galaxies and helped refine measurements of cosmic age and expansion.',
   },
   {
     id: 'iss',
@@ -319,8 +522,11 @@ export const SPACECRAFT: SpacecraftData[] = [
     inclination: 0.9,
     phase: 3.3,
     orbitNote: '~420 km 近地轨道',
+    orbitNoteEn: '~420 km LOW EARTH ORBIT',
     description:
       '足球场大小的在轨实验室，由 15 国合作建造，自 2000 年起持续有人驻留。每 90 分钟绕地球一圈，宇航员每天能看到 16 次日出。',
+    descriptionEn:
+      'A football-field-sized orbital laboratory assembled through international partnership and continuously inhabited since 2000. It circles Earth about every 90 minutes.',
   },
   {
     id: 'tiangong',
@@ -350,8 +556,11 @@ export const SPACECRAFT: SpacecraftData[] = [
     inclination: 0.72,
     phase: 5,
     orbitNote: '~390 km 近地轨道',
+    orbitNoteEn: '~390 km LOW EARTH ORBIT',
     description:
       '中国自主建造的三舱 T 字构型空间站，天和核心舱加问天、梦天实验舱，常态化驻留三名航天员，开展空间科学与技术实验。',
+    descriptionEn:
+      'China’s T-shaped three-module space station combines the Tianhe core with the Wentian and Mengtian laboratory modules for long-duration crews and research.',
   },
 ]
 
@@ -367,6 +576,15 @@ const MS_PER_DAY = 86_400_000
 export function isCraftLaunched(craft: SpacecraftData, simTime: number): boolean {
   const launchJd = Date.parse(`${craft.launchDate}T00:00:00Z`) / MS_PER_DAY + UNIX_EPOCH_JD
   return simTimeToJd(simTime) >= launchJd
+}
+
+/** Physical scene visibility, including destruction or surface-impact dates. */
+export function isCraftSceneVisible(craft: SpacecraftData, simTime: number): boolean {
+  if (!isCraftLaunched(craft, simTime)) return false
+  if (!craft.sceneEndDate) return true
+  const endJd =
+    Date.parse(`${craft.sceneEndDate}T23:59:59Z`) / MS_PER_DAY + UNIX_EPOCH_JD
+  return simTimeToJd(simTime) <= endJd
 }
 
 export type CraftModifiers = {
@@ -517,6 +735,31 @@ export function auToSceneRadius(au: number, trueScale: boolean): number {
 
 export type TrailPoint = [number, number, number]
 
+function interpolateHorizonsSamples(
+  a: HorizonsVectorSample,
+  b: HorizonsVectorSample,
+  t: number,
+): HorizonsVectorSample {
+  const h = b[0] - a[0]
+  const t2 = t * t
+  const t3 = t2 * t
+  const h00 = 2 * t3 - 3 * t2 + 1
+  const h10 = t3 - 2 * t2 + t
+  const h01 = -2 * t3 + 3 * t2
+  const h11 = t3 - t2
+  const hermite = (index: 1 | 2 | 3) =>
+    h00 * a[index] + h10 * h * a[index + 3] + h01 * b[index] + h11 * h * b[index + 3]
+  return [
+    a[0] + h * t,
+    hermite(1),
+    hermite(2),
+    hermite(3),
+    a[4] + (b[4] - a[4]) * t,
+    a[5] + (b[5] - a[5]) * t,
+    a[6] + (b[6] - a[6]) * t,
+  ]
+}
+
 /**
  * Interpolated Sun-centered ICRF state at the given simulation time. Uses
  * cubic Hermite interpolation of position with the bundled velocities, so the
@@ -537,25 +780,7 @@ function getHorizonsSample(samples: readonly HorizonsVectorSample[], simTime: nu
   }
   const a = samples[low]
   const b = samples[high]
-  const h = b[0] - a[0]
-  const t = (jd - a[0]) / h
-  const t2 = t * t
-  const t3 = t2 * t
-  const h00 = 2 * t3 - 3 * t2 + 1
-  const h10 = t3 - 2 * t2 + t
-  const h01 = -2 * t3 + 3 * t2
-  const h11 = t3 - t2
-  const hermite = (index: 1 | 2 | 3) =>
-    h00 * a[index] + h10 * h * a[index + 3] + h01 * b[index] + h11 * h * b[index + 3]
-  return [
-    jd,
-    hermite(1),
-    hermite(2),
-    hermite(3),
-    a[4] + (b[4] - a[4]) * t,
-    a[5] + (b[5] - a[5]) * t,
-    a[6] + (b[6] - a[6]) * t,
-  ]
+  return interpolateHorizonsSamples(a, b, (jd - a[0]) / (b[0] - a[0]))
 }
 
 function horizonsSampleToScene(sample: HorizonsVectorSample, modifiers: CraftModifiers): TrailPoint {
@@ -568,15 +793,50 @@ function horizonsSampleToScene(sample: HorizonsVectorSample, modifiers: CraftMod
 }
 
 /**
- * The reconstructed flight path in scene coordinates: every bundled Horizons
- * state vector, mapped by the active scale mode.
+ * Reconstructed flight path in scene coordinates. Raw Horizons vectors are
+ * 30 days apart, so each interval is adaptively subdivided with the same
+ * position+velocity Hermite curve used by live placement. Angular steps stay
+ * below about 1.5° in the inner system instead of exposing the raw polygon.
  */
 export function getDeepProbeTrailWaypoints(
   craft: SpacecraftData,
   modifiers: CraftModifiers = {},
 ): TrailPoint[] {
   if (!craft.trajectory) return []
-  return craft.trajectory.map((sample) => horizonsSampleToScene(sample, modifiers))
+  const result: TrailPoint[] = []
+  for (let index = 0; index < craft.trajectory.length - 1; index++) {
+    const a = craft.trajectory[index]
+    const b = craft.trajectory[index + 1]
+    const radiusA = Math.hypot(a[1], a[2], a[3])
+    const radiusB = Math.hypot(b[1], b[2], b[3])
+    const denominator = radiusA * radiusB
+    const cosine = denominator
+      ? Math.max(
+          -1,
+          Math.min(
+            1,
+          (a[1] * b[1] + a[2] * b[2] + a[3] * b[3]) / denominator,
+          ),
+        )
+      : 1
+    const angle = Math.acos(cosine)
+    const minimumRadius = Math.min(radiusA, radiusB)
+    const nearSunMinimum = minimumRadius < 2 ? 16 : minimumRadius < 8 ? 8 : 1
+    const subdivisions = Math.min(
+      64,
+      Math.max(nearSunMinimum, Math.ceil(angle / (Math.PI / 360))),
+    )
+    for (let step = 0; step < subdivisions; step++) {
+      result.push(
+        horizonsSampleToScene(
+          interpolateHorizonsSamples(a, b, step / subdivisions),
+          modifiers,
+        ),
+      )
+    }
+  }
+  result.push(horizonsSampleToScene(craft.trajectory.at(-1)!, modifiers))
+  return result
 }
 
 /** Orbit radius for a sun-anchored craft (Parker), true-scale aware. */
@@ -746,32 +1006,57 @@ export type CraftStats = {
   velocity: string
 }
 
-export function getCraftStats(craft: SpacecraftData, simTime: number): CraftStats {
+export function getCraftStats(
+  craft: SpacecraftData,
+  simTime: number,
+  englishOnly = false,
+): CraftStats {
   const age = Math.max(0, 2026 + simTime - craft.launchYear)
   const velocity = craft.velocityKms ? `${craft.velocityKms} km/s` : '—'
+  const ageLabel = englishOnly ? `${age.toFixed(0)} YEARS` : `${age.toFixed(0)} 年`
 
   if (craft.kind === 'deep-probe') {
     const au = getCraftLiveAu(craft, simTime)
     const lightHours = (au * 499) / 3600
     return {
       distance: `${au.toFixed(1)} AU`,
-      signal: `${lightHours.toFixed(1)} 小时`,
-      age: `${age.toFixed(0)} 年`,
+      signal: englishOnly ? `${lightHours.toFixed(1)} HOURS` : `${lightHours.toFixed(1)} 小时`,
+      age: ageLabel,
       velocity,
     }
   }
 
   if (craft.kind === 'solar-probe') {
-    return { distance: '0.046 – 0.73 AU', signal: '≤ 8 分钟', age: `${age.toFixed(0)} 年`, velocity: `峰值 ${craft.velocityKms} km/s` }
+    return {
+      distance: '0.046 – 0.73 AU',
+      signal: englishOnly ? '≤ 8 MINUTES' : '≤ 8 分钟',
+      age: ageLabel,
+      velocity: englishOnly ? `PEAK ${craft.velocityKms} km/s` : `峰值 ${craft.velocityKms} km/s`,
+    }
   }
 
   if (craft.anchor === 'earth-l2') {
-    return { distance: '日地 L2 · 0.01 AU', signal: '≈ 5 秒', age: `${age.toFixed(0)} 年`, velocity }
+    return {
+      distance: englishOnly ? 'SUN–EARTH L2 · 0.01 AU' : '日地 L2 · 0.01 AU',
+      signal: englishOnly ? '≈ 5 SECONDS' : '≈ 5 秒',
+      age: ageLabel,
+      velocity,
+    }
   }
 
   if (craft.anchor === 'jupiter') {
-    return { distance: craft.orbitNote ?? '木星轨道', signal: '35 – 52 分钟', age: `${age.toFixed(0)} 年`, velocity }
+    return {
+      distance: englishOnly ? (craft.orbitNoteEn ?? 'JUPITER ORBIT') : (craft.orbitNote ?? '木星轨道'),
+      signal: englishOnly ? '35 – 52 MINUTES' : '35 – 52 分钟',
+      age: ageLabel,
+      velocity,
+    }
   }
 
-  return { distance: craft.orbitNote ?? '近地轨道', signal: '< 1 秒', age: `${age.toFixed(0)} 年`, velocity }
+  return {
+    distance: englishOnly ? (craft.orbitNoteEn ?? 'LOW EARTH ORBIT') : (craft.orbitNote ?? '近地轨道'),
+    signal: englishOnly ? '< 1 SECOND' : '< 1 秒',
+    age: ageLabel,
+    velocity,
+  }
 }

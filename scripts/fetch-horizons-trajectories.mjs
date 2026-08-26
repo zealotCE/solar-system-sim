@@ -17,6 +17,16 @@ const requests = [
   { id: 'pioneer10', command: '-23', start: '1972-03-04', stop: '2050-01-01' },
   // New Horizons' Horizons ephemeris also ends at 2050-01-01 TDB.
   { id: 'newhorizons', command: '-98', start: '2006-01-20', stop: '2050-01-01' },
+  { id: 'cassini', command: '-82', start: '1997-10-16', stop: '2017-09-15' },
+  { id: 'galileo', command: '-77', start: '1989-10-20', stop: '2003-09-29' },
+  // Horizons includes a post-mission Ceres-orbit prediction for Dawn.
+  { id: 'dawn', command: '-203', start: '2007-09-28', stop: '2043-10-28' },
+  { id: 'rosetta', command: '-226', start: '2004-03-03', stop: '2016-10-04' },
+  { id: 'osirisrex', command: '-64', start: '2016-09-09', stop: '2030-03-21' },
+  { id: 'lucy', command: '-49', start: '2021-10-17', stop: '2033-04-01' },
+  // Current Psyche navigation/reference trajectory ends in February 2029.
+  { id: 'psyche', command: '-255', start: '2023-10-14', stop: '2029-02-10' },
+  { id: 'europaclipper', command: '-159', start: '2024-10-15', stop: '2034-09-02' },
 ]
 
 function queryFor({ command, start, stop }) {

@@ -23,6 +23,7 @@ export type MoonData = {
 export type PlanetData = {
   id: string
   name: string
+  englishName: string
   radius: number
   orbitRadius: number
   orbitalPeriod: number
@@ -30,6 +31,7 @@ export type PlanetData = {
   color: string
   emissive: string
   description: string
+  descriptionEn: string
   diameterKm: number
   realOrbitAu: number
   eccentricity: number
@@ -69,6 +71,7 @@ export function getTrueBodyRadius(diameterKm: number): number {
 export const SUN = {
   id: 'sun',
   name: '太阳',
+  englishName: 'Sun',
   radius: 2.85,
   color: '#ffb347',
   emissive: '#ffcc66',
@@ -76,6 +79,8 @@ export const SUN = {
   rotationPeriod: 25.4,
   description:
     '太阳系的中心恒星，一颗由氢氦核聚变驱动的 G 型主序星。它占据了太阳系 99.8% 以上的质量，以光与引力维系着所有行星的轨道。',
+  descriptionEn:
+    'The star at the center of the Solar System, a G-type main-sequence star powered by hydrogen fusion. It contains more than 99.8% of the system’s mass and governs every planetary orbit.',
 } as const
 
 export const MOON: MoonData = {
@@ -547,6 +552,7 @@ export const PLANETS: PlanetData[] = [
   {
     id: 'mercury',
     name: '水星',
+    englishName: 'Mercury',
     radius: 0.28,
     orbitRadius: 7.2,
     orbitalPeriod: 0.2408,
@@ -563,10 +569,13 @@ export const PLANETS: PlanetData[] = [
     moons: [],
     description:
       '太阳系最内侧的行星，表面布满撞击坑，几乎没有大气。面向太阳的一面可热至 430°C，背阴面则冷到 -180°C。公转只需约 88 个地球日。',
+    descriptionEn:
+      'The innermost planet has a heavily cratered surface and almost no atmosphere. Temperatures range from about 430°C in sunlight to −180°C at night, while one orbit takes only 88 Earth days.',
   },
   {
     id: 'venus',
     name: '金星',
+    englishName: 'Venus',
     radius: 0.48,
     orbitRadius: 10.5,
     orbitalPeriod: 0.6152,
@@ -583,10 +592,13 @@ export const PLANETS: PlanetData[] = [
     moons: [],
     description:
       '被厚重的二氧化碳大气包裹，失控的温室效应让表面热到足以熔化铅。它以与多数行星相反的方向缓慢自转，一天比一年还长。',
+    descriptionEn:
+      'A dense carbon-dioxide atmosphere drives a runaway greenhouse effect hot enough to melt lead. Venus rotates slowly in the opposite direction to most planets, making its day longer than its year.',
   },
   {
     id: 'earth',
     name: '地球',
+    englishName: 'Earth',
     radius: 0.52,
     orbitRadius: 14.3,
     orbitalPeriod: 1,
@@ -603,10 +615,13 @@ export const PLANETS: PlanetData[] = [
     moons: [MOON],
     description:
       '我们已知唯一孕育生命的家园。液态水、保护性大气与磁场，以及一颗稳定的月球，共同造就了这颗蓝色行星的宜居环境。',
+    descriptionEn:
+      'The only known world with life. Liquid water, a protective atmosphere and magnetic field, and a stabilizing Moon combine to make this blue planet habitable.',
   },
   {
     id: 'mars',
     name: '火星',
+    englishName: 'Mars',
     radius: 0.36,
     orbitRadius: 18.8,
     orbitalPeriod: 1.8808,
@@ -623,10 +638,13 @@ export const PLANETS: PlanetData[] = [
     moons: MARS_MOONS,
     description:
       '寒冷的红色荒漠，氧化铁让它呈现锈色。拥有太阳系最高的火山奥林匹斯山，以及可能曾有液态水流动的古老河谷。',
+    descriptionEn:
+      'A cold desert stained red by iron oxides. Mars hosts Olympus Mons, the tallest volcano in the Solar System, and ancient valleys carved when liquid water may have flowed.',
   },
   {
     id: 'jupiter',
     name: '木星',
+    englishName: 'Jupiter',
     radius: 1.72,
     orbitRadius: 34.2,
     orbitalPeriod: 11.862,
@@ -643,10 +661,13 @@ export const PLANETS: PlanetData[] = [
     moons: JUPITER_MOONS,
     description:
       '一颗气体巨行星，质量比其余行星的总和还大。大红斑是持续了数百年的巨型风暴，其强磁场与数十颗卫星构成一座微型太阳系。',
+    descriptionEn:
+      'A gas giant more massive than all other planets combined. Its Great Red Spot is a centuries-old storm, and its powerful magnetic field and many moons form a miniature planetary system.',
   },
   {
     id: 'saturn',
     name: '土星',
+    englishName: 'Saturn',
     radius: 1.46,
     orbitRadius: 46.4,
     orbitalPeriod: 29.457,
@@ -664,10 +685,13 @@ export const PLANETS: PlanetData[] = [
     moons: SATURN_MOONS,
     description:
       '以壮丽的冰环闻名于世。本体主要由氢与氦构成，平均密度甚至低于水。环系由无数冰块与尘埃组成，薄如刀刃却绵延数十万公里。',
+    descriptionEn:
+      'Famous for an immense system of icy rings, Saturn is mostly hydrogen and helium and is less dense than water. Its razor-thin rings extend for hundreds of thousands of kilometres.',
   },
   {
     id: 'uranus',
     name: '天王星',
+    englishName: 'Uranus',
     radius: 0.92,
     orbitRadius: 58.6,
     orbitalPeriod: 84.011,
@@ -685,10 +709,13 @@ export const PLANETS: PlanetData[] = [
     moons: URANUS_MOONS,
     description:
       '几乎侧躺着绕太阳公转，地轴倾角接近 98°。淡青色来自甲烷大气对红光的吸收。它拥有暗淡却完整的环系统，是一颗冰巨星。',
+    descriptionEn:
+      'Uranus orbits almost on its side with an axial tilt near 98°. Methane absorbs red light to create its pale cyan color, and a complete but dark ring system circles this ice giant.',
   },
   {
     id: 'neptune',
     name: '海王星',
+    englishName: 'Neptune',
     radius: 0.88,
     orbitRadius: 70.2,
     orbitalPeriod: 164.79,
@@ -705,10 +732,13 @@ export const PLANETS: PlanetData[] = [
     moons: NEPTUNE_MOONS,
     description:
       '太阳系最外侧的行星，在望远镜发明后才被数学预言并发现。深蓝色大气中风暴活跃，风速可达超音速，遥远而神秘。',
+    descriptionEn:
+      'The outermost planet was predicted mathematically before it was observed. Its blue atmosphere hosts active storms and the fastest winds measured anywhere in the Solar System.',
   },
   {
     id: 'pluto',
     name: '冥王星',
+    englishName: 'Pluto',
     radius: 0.22,
     orbitRadius: 84,
     orbitalPeriod: 247.94,
@@ -726,6 +756,8 @@ export const PLANETS: PlanetData[] = [
     moons: PLUTO_MOONS,
     description:
       '柯伊伯带的王者，2006 年起被归为矮行星。新视野号揭示了它心形的氮冰川「斯普特尼克平原」与蓝色薄雾大气。它的轨道倾斜偏椭，与卡戎互相锁定共舞。',
+    descriptionEn:
+      'A dwarf planet in the Kuiper Belt. New Horizons revealed the heart-shaped nitrogen glacier Sputnik Planitia and a layered blue haze; Pluto and Charon remain mutually tidally locked.',
   },
 ]
 
@@ -863,7 +895,18 @@ export function getPlanetPosition(
   simTime: number,
   modifiers: OrbitModifiers = {},
 ): [number, number, number] {
-  const [xAu, yAu, zAu] = getPlanetHeliocentricAu(planet.id, simTime)
+  return mapPlanetEclipticAuToScene(
+    planet,
+    getPlanetHeliocentricAu(planet.id, simTime),
+    modifiers,
+  )
+}
+
+function mapPlanetEclipticAuToScene(
+  planet: PlanetData,
+  [xAu, yAu, zAu]: [number, number, number],
+  modifiers: OrbitModifiers,
+): [number, number, number] {
   if (modifiers.trueScale) {
     return eclipticToScene([xAu, yAu, zAu], AU_UNITS)
   }
@@ -884,18 +927,27 @@ export function getPlanetPosition(
 }
 
 /**
- * Closed orbit polyline matching getPlanetPosition's mapping, sampled over
- * one orbital period around the simulation epoch. Element drift within a
- * century is far below a pixel, so the line is treated as static.
+ * Closed osculating orbit matching getPlanetPosition's coordinate mapping.
+ * Every point uses one epoch's JPL elements while mean anomaly sweeps 0–2π,
+ * avoiding a precessing temporal path whose ends do not meet exactly.
  */
 export function getPlanetOrbitPoints(
   planet: PlanetData,
   modifiers: OrbitModifiers = {},
   segments = 192,
+  epochSimTime = 0,
 ): Array<[number, number, number]> {
+  const epochJd = simTimeToJd(epochSimTime)
   const points: Array<[number, number, number]> = []
   for (let i = 0; i <= segments; i++) {
-    points.push(getPlanetPosition(planet, (i / segments) * planet.orbitalPeriod, modifiers))
+    const meanAnomaly = (i / segments) * Math.PI * 2
+    points.push(
+      mapPlanetEclipticAuToScene(
+        planet,
+        getPlanetEclipticAu(planet.id, epochJd, meanAnomaly),
+        modifiers,
+      ),
+    )
   }
   return points
 }

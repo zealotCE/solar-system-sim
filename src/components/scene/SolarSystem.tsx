@@ -16,11 +16,20 @@ import {
   getSunVisualRadius,
   type PlanetData,
 } from '@/data/planets'
+import {
+  MINOR_BODIES,
+  getMinorBodyById,
+  getMinorBodyOrbitPoints,
+  getMinorBodyScenePosition,
+  getMinorBodyVisualRadius,
+  type MinorBodyData,
+} from '@/data/minorBodies'
 import { getSpacecraftById, getSpacecraftPosition } from '@/data/spacecraft'
 import { useSimulation } from '@/hooks/useSimulation'
 import { SIM_TIME_MAX_YEARS, SIM_TIME_MIN_YEARS } from '@/lib/utils'
 import { AsteroidBelt } from './AsteroidBelt'
 import { EclipticGrid } from './EclipticGrid'
+import { MinorBody } from './MinorBody'
 import { OrbitLine } from './OrbitLine'
 import { Planet } from './Planet'
 import { SpacecraftFleet } from './Spacecraft'
@@ -63,6 +72,8 @@ function getVisualRadius(id: string, trueScale: boolean): number {
     if (craft.kind === 'deep-probe') return trueScale ? 0.012 : 0.55
     return trueScale ? 0.0008 : 0.2
   }
+  const minorBody = getMinorBodyById(id)
+  if (minorBody) return getMinorBodyVisualRadius(minorBody, trueScale)
   const planet = PLANETS.find((item) => item.id === id)
   return planet ? getPlanetVisualRadius(planet, trueScale) : 1
 }
@@ -85,8 +96,11 @@ function CameraRig() {
     trueScale,
   } = useSimulation()
   const followTarget = useRef(new THREE.Vector3())
-  const focusAnim = useRef({ nonce: 0, progress: 1 })
+  const focusAnim = useRef({ nonce: 0, active: false })
   const offsetDir = useRef(new THREE.Vector3())
+  const trackedPosition = useRef(new THREE.Vector3())
+  const followDelta = useRef(new THREE.Vector3())
+  const trackedTargetKey = useRef<string | null>(null)
 
   useFrame((_, delta) => {
     const controls = controlsRef.current
@@ -101,7 +115,7 @@ function CameraRig() {
     }
 
     if (focusNonce !== focusAnim.current.nonce) {
-      focusAnim.current = { nonce: focusNonce, progress: 0 }
+      focusAnim.current = { nonce: focusNonce, active: true }
     }
 
     if (followPlanet && selectedPlanetId) {
@@ -128,6 +142,16 @@ function CameraRig() {
           })
           followTarget.current.set(x, y, z)
         } else {
+          const minorBody = getMinorBodyById(selectedPlanetId)
+          if (minorBody) {
+            const [x, y, z] = getMinorBodyScenePosition(
+              minorBody,
+              simTimeRef.current,
+              trueScale,
+              orbitScale,
+            )
+            followTarget.current.set(x, y, z)
+          }
           const planet = PLANETS.find((item) => item.id === selectedPlanetId)
           if (planet) {
             const [x, y, z] = getPlanetPosition(planet, simTimeRef.current, {
@@ -140,24 +164,50 @@ function CameraRig() {
           }
         }
       }
-      // At true scale a focused body subtends metres of scene units; snap the
-      // target harder so the tiny sphere does not trail behind the camera.
-      controls.target.lerp(followTarget.current, trueScale ? 0.4 : 0.12)
+      // Translate the camera by the body's frame-to-frame displacement. Merely
+      // rotating toward a fast-moving target makes it escape the viewport at
+      // high simulation speeds, especially for Mercury in true scale.
+      const targetKey = `${selectedPlanetId}:${trueScale}`
+      if (trackedTargetKey.current === targetKey) {
+        followDelta.current.copy(followTarget.current).sub(trackedPosition.current)
+        camera.position.add(followDelta.current)
+      } else {
+        trackedTargetKey.current = targetKey
+      }
+      trackedPosition.current.copy(followTarget.current)
+      controls.target.copy(followTarget.current)
 
       // Star Walk-style fly-in: shortly after selecting a body, glide the camera
       // to a comfortable viewing distance while keeping the current view angle.
-      if (focusAnim.current.progress < 1) {
-        focusAnim.current.progress = Math.min(1, focusAnim.current.progress + delta / 1.5)
+      if (focusAnim.current.active) {
         const radius = getVisualRadius(selectedPlanetId, trueScale) * planetScale
+        const focusingCraft = Boolean(getSpacecraftById(selectedPlanetId))
         const desiredDistance = trueScale
-          ? THREE.MathUtils.clamp(radius * 8, 0.00025, 130)
-          : THREE.MathUtils.clamp(radius * 7 + 1.2, 1.6, 36)
+          ? THREE.MathUtils.clamp(
+              radius * (focusingCraft ? 3 : 4.5),
+              Math.max(radius * 1.5, 0.00004),
+              90,
+            )
+          : THREE.MathUtils.clamp(radius * 4.2 + 0.35, 0.9, 24)
         offsetDir.current.copy(camera.position).sub(controls.target)
         const currentDistance = offsetDir.current.length()
-        const nextDistance = THREE.MathUtils.lerp(currentDistance, desiredDistance, 0.06)
+        const cameraDamping = 1 - Math.exp(-9 * delta)
+        const nextDistance = THREE.MathUtils.lerp(
+          currentDistance,
+          desiredDistance,
+          cameraDamping,
+        )
         offsetDir.current.normalize().multiplyScalar(nextDistance)
         camera.position.copy(controls.target).add(offsetDir.current)
+        if (
+          Math.abs(nextDistance - desiredDistance) <=
+          Math.max(desiredDistance * 0.012, 1e-7)
+        ) {
+          focusAnim.current.active = false
+        }
       }
+    } else {
+      trackedTargetKey.current = null
     }
   })
 
@@ -189,32 +239,82 @@ function CameraRig() {
 function SceneLights() {
   return (
     <>
-      <ambientLight intensity={0.055} />
-      <hemisphereLight args={['#1a3358', '#050508', 0.18]} />
+      <ambientLight intensity={0.08} />
+      <hemisphereLight args={['#1a3358', '#050508', 0.22]} />
     </>
   )
 }
 
 /** Real orbit polyline sampled from the ephemeris (both scale modes). */
 function PlanetOrbit({ planet }: { planet: PlanetData }) {
-  const { orbitScale, eccentricityScale, inclinationScale, trueScale, selectedPlanetId } =
-    useSimulation()
-  const points = useMemo(
-    () =>
-      getPlanetOrbitPoints(planet, {
+  const {
+    orbitScale,
+    eccentricityScale,
+    inclinationScale,
+    trueScale,
+    selectedPlanetId,
+    orbitEpoch,
+  } = useSimulation()
+
+  const orbit = useMemo(
+    () => {
+      const modifiers = {
         orbitScale,
         eccentricityScale,
         inclinationScale,
         trueScale,
-      }),
-    [planet, orbitScale, eccentricityScale, inclinationScale, trueScale],
+      }
+      const anchor = getPlanetPosition(planet, orbitEpoch, modifiers)
+      const points = getPlanetOrbitPoints(
+        planet,
+        modifiers,
+        trueScale ? (planet.id === 'pluto' ? 16384 : 2048) : 256,
+        orbitEpoch,
+      ).map(
+        ([x, y, z]) =>
+          [x - anchor[0], y - anchor[1], z - anchor[2]] as [number, number, number],
+      )
+      return { anchor, points }
+    },
+    [planet, orbitScale, eccentricityScale, inclinationScale, trueScale, orbitEpoch],
   )
   return (
-    <OrbitLine
-      customPoints={points}
-      color={planet.color}
-      active={selectedPlanetId === planet.id}
-    />
+    <group position={orbit.anchor}>
+      <OrbitLine
+        customPoints={orbit.points}
+        color={planet.color}
+        active={selectedPlanetId === planet.id}
+      />
+    </group>
+  )
+}
+
+function MinorBodyOrbit({ body }: { body: MinorBodyData }) {
+  const { orbitScale, trueScale, selectedPlanetId, orbitEpoch } = useSimulation()
+  const orbit = useMemo(
+    () => {
+      const anchor = getMinorBodyScenePosition(body, orbitEpoch, trueScale, orbitScale)
+      const points = getMinorBodyOrbitPoints(
+        body,
+        trueScale,
+        orbitScale,
+        trueScale ? 1536 : 320,
+      ).map(
+        ([x, y, z]) =>
+          [x - anchor[0], y - anchor[1], z - anchor[2]] as [number, number, number],
+      )
+      return { anchor, points }
+    },
+    [body, orbitScale, trueScale, orbitEpoch],
+  )
+  return (
+    <group position={orbit.anchor}>
+      <OrbitLine
+        customPoints={orbit.points}
+        color={body.color}
+        active={selectedPlanetId === body.id}
+      />
+    </group>
   )
 }
 
@@ -238,18 +338,22 @@ function SceneContent() {
       <Sun />
       {showEcliptic ? <EclipticGrid /> : null}
       {showOrbits ? PLANETS.map((planet) => <PlanetOrbit key={`${planet.id}-orbit`} planet={planet} />) : null}
+      {showAsteroids && showOrbits
+        ? MINOR_BODIES.map((body) => <MinorBodyOrbit key={`${body.id}-orbit`} body={body} />)
+        : null}
       {PLANETS.map((planet) => (
         <Planet key={planet.id} planet={planet} />
       ))}
+      {showAsteroids ? MINOR_BODIES.map((body) => <MinorBody key={body.id} body={body} />) : null}
       {showSpacecraft ? <SpacecraftFleet /> : null}
       {showAsteroids ? <AsteroidBelt /> : null}
       {/* Screen-space vignette lives in CSS; the postprocessing one produced a
           visible circular veil over the scene at wide zoom levels. */}
-      <EffectComposer multisampling={0} enableNormalPass={false}>
+      <EffectComposer multisampling={4} enableNormalPass={false}>
         <Bloom
           intensity={bloomStrength}
-          luminanceThreshold={0.38}
-          luminanceSmoothing={0.34}
+          luminanceThreshold={0.82}
+          luminanceSmoothing={0.22}
           mipmapBlur
         />
       </EffectComposer>
@@ -258,7 +362,7 @@ function SceneContent() {
 }
 
 export function SolarSystem() {
-  const { selectPlanet, trueScale } = useSimulation()
+  const { trueScale } = useSimulation()
 
   return (
     <Canvas
@@ -272,11 +376,10 @@ export function SolarSystem() {
         // hundreds of AU); a logarithmic depth buffer avoids z-fighting.
         logarithmicDepthBuffer: true,
       }}
-      onPointerMissed={() => selectPlanet(null)}
       onCreated={({ gl }) => {
         gl.setClearColor('#02060f', 1)
         gl.toneMapping = THREE.ACESFilmicToneMapping
-        gl.toneMappingExposure = 1.08
+        gl.toneMappingExposure = 0.9
       }}
     >
       <color attach="background" args={['#02060f']} />

@@ -24,7 +24,7 @@ export function OrbitLine({
 }: OrbitLineProps) {
   const points = useMemo(() => {
     if (customPoints) return customPoints.map(([x, y, z]) => new THREE.Vector3(x, y, z))
-    const segments = 160
+    const segments = 320
     const result: THREE.Vector3[] = []
     for (let i = 0; i <= segments; i++) {
       const simTime = (i / segments) * 1
@@ -39,6 +39,7 @@ export function OrbitLine({
       points={points}
       color={color}
       transparent
+      depthWrite={false}
       opacity={active ? 0.72 : 0.2}
       lineWidth={active ? 1.55 : 0.72}
       dashed={false}

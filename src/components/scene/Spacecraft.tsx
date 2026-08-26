@@ -11,6 +11,7 @@ import {
   getDeepProbeTrailWaypoints,
   getSpacecraftPlacement,
   isCraftLaunched,
+  isCraftSceneVisible,
   type SpacecraftData,
   type SpacecraftKind,
 } from '@/data/spacecraft'
@@ -37,9 +38,11 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
   const localRef = useRef<THREE.Group>(null)
   const meshRef = useRef<THREE.Mesh>(null)
   const glbSpinRef = useRef<THREE.Group>(null)
+  const visualProxyRef = useRef<THREE.Group>(null)
   const hitRef = useRef<THREE.Mesh>(null)
   const locatorRef = useRef<THREE.Sprite>(null)
   const labelRef = useRef<HTMLDivElement>(null)
+  const labelVisibleRef = useRef(false)
   const { size } = useThree()
   const {
     simTimeRef,
@@ -52,6 +55,8 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
     inclinationScale,
     planetScale,
     trueScale,
+    englishOnly,
+    orbitEpoch,
   } = useSimulation()
   const glow = useMemo(() => getGlowTexture(), [])
   const locator = useMemo(() => getCraftLocatorTexture(), [])
@@ -71,6 +76,7 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
   }
   const model = getCraftModel(craft.id)
   const stylizedModelRadius = getCraftFocusRadius(craft, false) * 1.7
+  const proxyWorldSpan = getCraftFocusRadius(craft, true) * 0.2
 
   // Reconstructed flight path straight from the offline Horizons samples.
   const trail = useMemo(() => {
@@ -80,14 +86,36 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
       trueScale,
     })
     if (!waypoints.length) return null
-    const points = waypoints.map(([x, y, z]) => new THREE.Vector3(x, y, z))
+    const placement = getSpacecraftPlacement(craft, orbitEpoch, {
+      orbitScale,
+      eccentricityScale,
+      inclinationScale,
+      planetScale,
+      trueScale,
+    })
+    const anchor = new THREE.Vector3(
+      placement.anchor[0] + placement.local[0],
+      placement.anchor[1] + placement.local[1],
+      placement.anchor[2] + placement.local[2],
+    )
+    const points = waypoints.map(
+      ([x, y, z]) => new THREE.Vector3(x - anchor.x, y - anchor.y, z - anchor.z),
+    )
     const bright = new THREE.Color(craft.color)
     const dim = bright.clone().multiplyScalar(0.08)
     const colors = points.map((_, index) =>
       dim.clone().lerp(bright, Math.pow(index / (points.length - 1), 1.5)),
     )
-    return { points, colors }
-  }, [craft, orbitScale, inclinationScale, trueScale])
+    return { anchor, points, colors }
+  }, [
+    craft,
+    orbitEpoch,
+    orbitScale,
+    eccentricityScale,
+    inclinationScale,
+    planetScale,
+    trueScale,
+  ])
 
   useFrame(({ camera }, delta) => {
     const anchorGroup = anchorRef.current
@@ -127,13 +155,33 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
         hitRef.current.scale.setScalar(Math.max(1, targetWorldRadius / sizes.hit))
       }
       if (locatorRef.current) {
-        const locatorSize = worldPerPixel * (selected ? 28 : 20)
+        const locatorSize = worldPerPixel * 20
         locatorRef.current.scale.set(locatorSize, locatorSize, 1)
+      }
+      if (visualProxyRef.current) {
+        // The identification model has a world-space reference span, so it
+        // responds naturally to zoom. Pixel bounds only prevent selected craft
+        // from vanishing and nearby unselected craft from covering a planet.
+        const naturalPixels = proxyWorldSpan / worldPerPixel
+        const displayPixels = Math.max(
+          selected ? 24 : 0,
+          Math.min(selected ? 180 : 24, naturalPixels),
+        )
+        visualProxyRef.current.scale.setScalar(worldPerPixel * displayPixels)
+        visualProxyRef.current.visible = displayPixels >= 0.75
+        visualProxyRef.current.rotation.y += delta * (selected ? 0.2 : 0.5)
       }
     }
 
     if (labelRef.current) {
-      const visible = selected || sizes.labelAlways || distance < (trueScale ? 0.06 : 15)
+      const labelDistance = trueScale ? 0.06 : 15
+      const visible =
+        selected ||
+        sizes.labelAlways ||
+        (labelVisibleRef.current
+          ? distance < labelDistance * 1.08
+          : distance < labelDistance * 0.92)
+      labelVisibleRef.current = visible
       labelRef.current.style.opacity = visible ? '1' : '0'
       labelRef.current.style.pointerEvents = visible ? 'auto' : 'none'
     }
@@ -154,18 +202,32 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
       )}
     </mesh>
   )
+  const visualProxyMarker = (
+    <mesh>
+      <octahedronGeometry args={[0.5, 0]} />
+      <meshStandardMaterial
+        color={selected ? '#ffffff' : craft.color}
+        roughness={0.68}
+        metalness={0.22}
+        fog={false}
+      />
+    </mesh>
+  )
 
   return (
     <>
       {trail && showOrbits ? (
-        <Line
-          points={trail.points}
-          vertexColors={trail.colors}
-          transparent
-          opacity={selected ? 0.92 : 0.48}
-          lineWidth={selected ? 1.7 : 1}
-          dashed={false}
-        />
+        <group position={trail.anchor}>
+          <Line
+            points={trail.points}
+            vertexColors={trail.colors}
+            transparent
+            depthWrite={false}
+            opacity={selected ? 0.92 : 0.48}
+            lineWidth={selected ? 1.7 : 1}
+            dashed={false}
+          />
+        </group>
       ) : null}
       <group ref={anchorRef}>
         <group ref={localRef}>
@@ -186,14 +248,32 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
             <meshBasicMaterial transparent opacity={0} depthWrite={false} />
           </mesh>
 
-          {/* The official mesh is normalized for stylized mode, but in strict
-              true scale its longest deployed axis is converted from metres. */}
-          {selected && model ? (
+          {/* True scale keeps a physical metre-sized entity and overlays a
+              clearly non-physical, screen-sized identification model. */}
+          {trueScale ? (
+            <>
+              {selected && model ? (
+                <CraftGlbModel
+                  url={model.url}
+                  fitSpan={physicalSpan}
+                  fallback={proceduralMarker}
+                />
+              ) : (
+                proceduralMarker
+              )}
+              <group ref={visualProxyRef}>
+                {selected && model ? (
+                  <CraftGlbModel url={model.url} fitSpan={1} fallback={visualProxyMarker} />
+                ) : (
+                  visualProxyMarker
+                )}
+              </group>
+            </>
+          ) : selected && model ? (
             <group ref={glbSpinRef}>
               <CraftGlbModel
                 url={model.url}
-                fitRadius={trueScale ? undefined : stylizedModelRadius}
-                fitSpan={trueScale ? physicalSpan : undefined}
+                fitRadius={stylizedModelRadius}
                 fallback={proceduralMarker}
               />
             </group>
@@ -202,18 +282,20 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
           )}
 
           {trueScale ? (
-            <sprite ref={locatorRef} scale={[0, 0, 1]} renderOrder={20}>
-              <spriteMaterial
-                map={locator}
-                color={selected ? '#ffffff' : craft.color}
-                transparent
-                opacity={selected ? 0.95 : 0.72}
-                depthTest={false}
-                depthWrite={false}
-                toneMapped={false}
-                fog={false}
-              />
-            </sprite>
+            !selected ? (
+              <sprite ref={locatorRef} scale={[0, 0, 1]} renderOrder={20}>
+                <spriteMaterial
+                  map={locator}
+                  color={craft.color}
+                  transparent
+                  opacity={0.72}
+                  depthTest={false}
+                  depthWrite={false}
+                  toneMapped={false}
+                  fog={false}
+                />
+              </sprite>
+            ) : null
           ) : (
             <sprite scale={[sizes.glow, sizes.glow, 1]}>
               <spriteMaterial
@@ -231,6 +313,7 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
           {showLabels ? (
             <Html
               center
+              eps={0.25}
               zIndexRange={[12, 0]}
               style={{ pointerEvents: 'auto' }}
               position={[
@@ -260,7 +343,7 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
                 style={{ transition: 'opacity 240ms ease', cursor: 'pointer' }}
               >
                 <span className="craft-glyph">▴</span>
-                {craft.name}
+                {englishOnly ? craft.englishName : craft.name}
               </div>
             </Html>
           ) : null}
@@ -273,7 +356,7 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
 export function SpacecraftFleet() {
   const { showOrbits, orbitScale, inclinationScale, trueScale, simTime } = useSimulation()
   const parker = SPACECRAFT.find((craft) => craft.id === 'parker')
-  const visibleCraft = SPACECRAFT.filter((craft) => isCraftLaunched(craft, simTime))
+  const visibleCraft = SPACECRAFT.filter((craft) => isCraftSceneVisible(craft, simTime))
   const parkerLaunched = parker ? isCraftLaunched(parker, simTime) : false
 
   return (

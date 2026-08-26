@@ -1,4 +1,5 @@
 import { PLANETS, SUN } from './planets'
+import { MINOR_BODIES } from './minorBodies'
 import { SPACECRAFT, isCraftLaunched } from './spacecraft'
 
 /**
@@ -8,6 +9,7 @@ import { SPACECRAFT, isCraftLaunched } from './spacecraft'
 export const TARGET_SEQUENCE: string[] = [
   SUN.id,
   ...PLANETS.flatMap((planet) => [planet.id, ...planet.moons.map((moon) => moon.id)]),
+  ...MINOR_BODIES.map((body) => body.id),
   ...SPACECRAFT.map((craft) => craft.id),
 ]
 
@@ -16,6 +18,7 @@ export function getAvailableTargetSequence(simTime: number): string[] {
   return [
     SUN.id,
     ...PLANETS.flatMap((planet) => [planet.id, ...planet.moons.map((moon) => moon.id)]),
+    ...MINOR_BODIES.map((body) => body.id),
     ...SPACECRAFT.filter((craft) => isCraftLaunched(craft, simTime)).map((craft) => craft.id),
   ]
 }

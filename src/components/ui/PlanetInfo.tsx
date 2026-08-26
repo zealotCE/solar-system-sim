@@ -17,7 +17,12 @@ import {
   X,
 } from 'lucide-react'
 
+import { getArchiveProfile } from '@/data/archiveProfiles'
 import { getMissionStoryForCraft } from '@/data/missionStories'
+import {
+  getMinorBodyById,
+  getMinorBodyHeliocentricAu,
+} from '@/data/minorBodies'
 import {
   PLANETS,
   SUN,
@@ -31,9 +36,11 @@ import {
   getCraftKindLabel,
   getCraftStats,
   getSpacecraftById,
+  isCraftSceneVisible,
 } from '@/data/spacecraft'
 import { getAdjacentTargetId, getAvailableTargetSequence } from '@/data/targets'
 import { useSimulation } from '@/hooks/useSimulation'
+import { getMinorBodyModel } from '@/lib/minorBodyModels'
 import { getCraftModel } from '@/lib/spacecraftModels'
 import { cn, formatDays } from '@/lib/utils'
 import { BodyPreview } from './BodyPreview'
@@ -58,39 +65,63 @@ const REAL_MOON_COUNTS: Record<string, number> = {
 
 function getDiameter(id: string): number {
   if (id === 'sun') return SUN.diameterKm
+  const minorBody = getMinorBodyById(id)
+  if (minorBody) return minorBody.diameterKm
   const moonHit = findMoonById(id)
   if (moonHit) return moonHit.moon.diameterKm
   return PLANETS.find((planet) => planet.id === id)?.diameterKm ?? 0
 }
 
-function getOrbitLabel(id: string): string {
+function getOrbitLabel(id: string, englishOnly = false): string {
   if (id === 'sun') return '—'
+  const minorBody = getMinorBodyById(id)
+  if (minorBody) return `${minorBody.orbit.semiMajorAxisAu.toFixed(3)} AU`
   const moonHit = findMoonById(id)
   if (moonHit) {
     const wan = moonHit.moon.realOrbitKm / 10000
-    const distance = wan >= 1 ? `${wan.toFixed(1)} 万 km` : `${moonHit.moon.realOrbitKm.toLocaleString()} km`
-    return `${distance}（绕${moonHit.parent.name}）`
+    const distance =
+      wan >= 1 && !englishOnly
+        ? `${wan.toFixed(1)} 万 km`
+        : `${moonHit.moon.realOrbitKm.toLocaleString()} km`
+    return englishOnly
+      ? `${distance} (AROUND ${moonHit.parent.englishName.toUpperCase()})`
+      : `${distance}（绕${moonHit.parent.name}）`
   }
   const planet = PLANETS.find((item) => item.id === id)
   return planet ? `${planet.realOrbitAu.toFixed(3)} AU` : '—'
 }
 
-function getPeriodLabel(id: string): string {
-  if (id === 'sun') return '—'
-  const moonHit = findMoonById(id)
-  if (moonHit) return formatDays(Math.abs(moonHit.moon.orbitalPeriod) * 365.25)
-  const planet = PLANETS.find((item) => item.id === id)
-  return planet ? formatDays(planet.orbitalPeriod * 365.25) : '—'
+function formatDaysLocalized(days: number, englishOnly: boolean): string {
+  if (!englishOnly) return formatDays(days)
+  if (days < 1) return `${(days * 24).toFixed(1)} HOURS`
+  if (days < 730) return `${days.toFixed(days < 10 ? 1 : 0)} DAYS`
+  return `${(days / 365.25).toFixed(1)} YEARS`
 }
 
-function getRotationLabel(id: string): string {
-  if (id === 'sun') return formatDays(SUN.rotationPeriod)
+function getPeriodLabel(id: string, englishOnly = false): string {
+  if (id === 'sun') return '—'
+  const minorBody = getMinorBodyById(id)
+  if (minorBody) return formatDaysLocalized(minorBody.orbit.periodDays, englishOnly)
   const moonHit = findMoonById(id)
-  if (moonHit) return formatDays(Math.abs(moonHit.moon.rotationPeriod))
+  if (moonHit)
+    return formatDaysLocalized(Math.abs(moonHit.moon.orbitalPeriod) * 365.25, englishOnly)
+  const planet = PLANETS.find((item) => item.id === id)
+  return planet ? formatDaysLocalized(planet.orbitalPeriod * 365.25, englishOnly) : '—'
+}
+
+function getRotationLabel(id: string, englishOnly = false): string {
+  if (id === 'sun') return formatDaysLocalized(SUN.rotationPeriod, englishOnly)
+  const minorBody = getMinorBodyById(id)
+  if (minorBody)
+    return englishOnly
+      ? `${minorBody.rotationHours.toFixed(2)} HOURS`
+      : `${minorBody.rotationHours.toFixed(2)} 小时`
+  const moonHit = findMoonById(id)
+  if (moonHit) return formatDaysLocalized(Math.abs(moonHit.moon.rotationPeriod), englishOnly)
   const planet = PLANETS.find((item) => item.id === id)
   if (!planet) return '—'
-  const prefix = planet.rotationPeriod < 0 ? '逆向 · ' : ''
-  return `${prefix}${formatDays(planet.rotationPeriod)}`
+  const prefix = planet.rotationPeriod < 0 ? (englishOnly ? 'RETROGRADE · ' : '逆向 · ') : ''
+  return `${prefix}${formatDaysLocalized(Math.abs(planet.rotationPeriod), englishOnly)}`
 }
 
 const KM_PER_AU = 1.496e8
@@ -101,6 +132,8 @@ function getTargetHeliocentricAu(id: string, simTime: number): [number, number, 
   if (id === 'sun') return [0, 0, 0]
   const craft = getSpacecraftById(id)
   if (craft) return getCraftHeliocentricAu(craft, simTime)
+  const minorBody = getMinorBodyById(id)
+  if (minorBody) return getMinorBodyHeliocentricAu(minorBody, simTime)
   const moonHit = findMoonById(id)
   if (moonHit) return getMoonHeliocentricAu(moonHit, simTime)
   const planet = PLANETS.find((item) => item.id === id)
@@ -114,8 +147,13 @@ function formatAu(au: number): string {
   return `${au.toFixed(4)} AU`
 }
 
-function formatKm(au: number): string {
+function formatKm(au: number, englishOnly = false): string {
   const km = au * KM_PER_AU
+  if (englishOnly) {
+    if (km >= 1e9) return `${(km / 1e9).toFixed(2)} BILLION km`
+    if (km >= 1e6) return `${(km / 1e6).toFixed(2)} MILLION km`
+    return `${km.toFixed(0)} km`
+  }
   if (km >= 1e8) return `${(km / 1e8).toFixed(2)} 亿 km`
   if (km >= 1e4) return `${(km / 1e4).toFixed(1)} 万 km`
   return `${km.toFixed(0)} km`
@@ -137,7 +175,7 @@ function formatLightTime(seconds: number, pureChinese: boolean): string {
 
 /** NASA Eyes-style live readouts computed from the current model time. */
 function LiveReadouts({ targetId }: { targetId: string }) {
-  const { simTime, pureChinese } = useSimulation()
+  const { simTime, pureChinese, englishOnly } = useSimulation()
   const target = getTargetHeliocentricAu(targetId, simTime)
   if (!target) return null
   const [tx, ty, tz] = target
@@ -173,7 +211,7 @@ function LiveReadouts({ targetId }: { targetId: string }) {
             {targetId === 'sun' ? '—' : formatAu(distanceSun)}
           </dd>
           <dd className="text-[8px] text-slate-500 tabular-nums">
-            {targetId === 'sun' ? '' : formatKm(distanceSun)}
+            {targetId === 'sun' ? '' : formatKm(distanceSun, englishOnly)}
           </dd>
         </div>
         <div>
@@ -185,7 +223,7 @@ function LiveReadouts({ targetId }: { targetId: string }) {
             {targetId === 'earth' ? '—' : formatAu(distanceEarth)}
           </dd>
           <dd className="text-[8px] text-slate-500 tabular-nums">
-            {targetId === 'earth' ? '' : formatKm(distanceEarth)}
+            {targetId === 'earth' ? '' : formatKm(distanceEarth, englishOnly)}
           </dd>
         </div>
         <div>
@@ -204,19 +242,29 @@ function LiveReadouts({ targetId }: { targetId: string }) {
 }
 
 function getBodyMeta(id: string) {
-  if (id === 'sun') return { code: 'SOL', type: 'G2V 主序恒星', english: 'THE SUN' }
+  if (id === 'sun') return { code: 'SOL', type: 'G2V 主序恒星', typeEn: 'G2V MAIN-SEQUENCE STAR', english: 'THE SUN' }
+  const minorBody = getMinorBodyById(id)
+  if (minorBody) {
+    return {
+      code: minorBody.designation,
+      type: minorBody.classification,
+      typeEn: minorBody.classificationEn,
+      english: minorBody.englishName.toUpperCase(),
+    }
+  }
   const moonHit = findMoonById(id)
   if (moonHit) {
     return {
       code: moonHit.moon.englishName.toUpperCase(),
       type: `天然卫星 · ${moonHit.parent.name}系`,
+      typeEn: `NATURAL SATELLITE · ${moonHit.parent.englishName.toUpperCase()} SYSTEM`,
       english: moonHit.moon.englishName.toUpperCase(),
     }
   }
   const index = PLANETS.findIndex((planet) => planet.id === id)
   const planet = PLANETS[index]
   if (planet?.dwarf) {
-    return { code: 'KB-134340', type: '柯伊伯带矮行星', english: planet.id.toUpperCase() }
+    return { code: 'KB-134340', type: '柯伊伯带矮行星', typeEn: 'KUIPER BELT DWARF PLANET', english: planet.englishName.toUpperCase() }
   }
   const type =
     planet?.textureKind === 'gas'
@@ -227,7 +275,13 @@ function getBodyMeta(id: string) {
   return {
     code: `P-${String(index + 1).padStart(2, '0')}`,
     type,
-    english: planet?.id.toUpperCase() ?? 'OBJECT',
+    typeEn:
+      planet?.textureKind === 'gas'
+        ? 'GAS GIANT'
+        : planet?.textureKind === 'ice'
+          ? 'ICE GIANT'
+          : 'TERRESTRIAL PLANET',
+    english: planet?.englishName.toUpperCase() ?? 'OBJECT',
   }
 }
 
@@ -240,6 +294,7 @@ function TargetPager({
   onSelect: (id: string) => void
   simTime: number
 }) {
+  const { englishOnly } = useSimulation()
   const sequence = getAvailableTargetSequence(simTime)
   const index = selectedId ? sequence.indexOf(selectedId) : -1
   return (
@@ -247,10 +302,10 @@ function TargetPager({
       <button
         type="button"
         onClick={() => onSelect(getAdjacentTargetId(selectedId, -1, simTime))}
-        aria-label="上一个目标"
+        aria-label={englishOnly ? 'Previous target' : '上一个目标'}
       >
         <ChevronLeft className="size-3.5" />
-        上一个
+        {englishOnly ? 'PREVIOUS' : '上一个'}
       </button>
       <span className="target-pager-index">
         {index === -1 ? '—' : index + 1} / {sequence.length}
@@ -258,9 +313,9 @@ function TargetPager({
       <button
         type="button"
         onClick={() => onSelect(getAdjacentTargetId(selectedId, 1, simTime))}
-        aria-label="下一个目标"
+        aria-label={englishOnly ? 'Next target' : '下一个目标'}
       >
-        下一个
+        {englishOnly ? 'NEXT' : '下一个'}
         <ChevronRight className="size-3.5" />
       </button>
     </div>
@@ -274,15 +329,18 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
     followPlanet,
     setFollowPlanet,
     simTime,
+    languageMode,
     pureChinese,
+    englishOnly,
     trueScale,
     selectedStoryEvent,
     selectStoryEvent,
   } = useSimulation()
   const craft = getSpacecraftById(selectedPlanetId)
-  const body = craft ? null : getBodyById(selectedPlanetId)
+  const minorBody = craft ? null : getMinorBodyById(selectedPlanetId)
+  const body = craft || minorBody ? null : getBodyById(selectedPlanetId)
 
-  if (!selectedPlanetId || (!craft && !body)) {
+  if (!selectedPlanetId || (!craft && !body && !minorBody)) {
     return (
       <div className={cn('space-y-3', !compact && 'glass-panel rounded-3xl p-4')}>
         <TargetPager selectedId={selectedPlanetId} onSelect={selectPlanet} simTime={simTime} />
@@ -293,10 +351,12 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
           </div>
           <p className="eyebrow mt-6">{pureChinese ? '未选择目标' : 'NO OBJECT SELECTED'}</p>
           <h3 className="mt-2 font-display text-lg tracking-[0.12em] text-slate-100">
-            等待观测目标
+            {englishOnly ? 'AWAITING OBSERVATION TARGET' : '等待观测目标'}
           </h3>
           <p className="mt-2 max-w-[240px] text-xs leading-relaxed text-slate-500">
-            点击场景中的天体、打开目标列表，或直接用上方按钮（方向键 ←→）逐个浏览。
+            {englishOnly
+              ? 'Select an object in the scene, open the target index, or browse with the buttons above and the arrow keys.'
+              : '点击场景中的天体、打开目标列表，或直接用上方按钮（方向键 ←→）逐个浏览。'}
           </p>
           <div className="mt-5 flex items-center gap-2 text-[9px] tracking-[0.18em] text-cyan-200/45">
             <span className="size-1 animate-pulse rounded-full bg-cyan-300" />
@@ -307,44 +367,85 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
     )
   }
 
-  const name = craft ? craft.name : body!.name
-  const color = craft ? craft.color : body!.color
-  const description = craft ? craft.description : body!.description
+  const name = craft
+    ? englishOnly
+      ? craft.englishName
+      : craft.name
+    : minorBody
+      ? englishOnly
+        ? minorBody.englishName
+        : minorBody.name
+      : englishOnly
+        ? body!.englishName
+        : body!.name
+  const color = craft ? craft.color : minorBody ? minorBody.color : body!.color
+  const description = craft
+    ? englishOnly
+      ? craft.descriptionEn
+      : craft.description
+    : minorBody
+      ? englishOnly
+        ? minorBody.descriptionEn
+        : minorBody.description
+      : englishOnly
+        ? 'descriptionEn' in body!
+          ? body!.descriptionEn
+          : `A natural satellite in the ${findMoonById(selectedPlanetId)?.parent.englishName ?? 'Solar'} system.`
+        : body!.description
   const meta = craft
-    ? { code: craft.shortCode, type: `${getCraftKindLabel(craft.kind)} · ${craft.agency}`, english: craft.englishName.toUpperCase() }
+    ? {
+        code: craft.shortCode,
+        type: `${getCraftKindLabel(craft.kind)} · ${craft.agency}`,
+        typeEn: `${craft.kind.replace('-', ' ').toUpperCase()} · ${craft.agency}`,
+        english: craft.englishName.toUpperCase(),
+      }
     : getBodyMeta(selectedPlanetId)
 
-  const craftStats = craft ? getCraftStats(craft, simTime) : null
+  const craftStats = craft ? getCraftStats(craft, simTime, englishOnly) : null
   const provenance = craft?.provenance ?? null
   const fidelityLabel = provenance
-    ? {
-        'horizons-vector-trajectory': 'JPL Horizons 状态矢量 · Hermite 插值',
-        'simplified-keplerian-orbit': '简化开普勒轨道（示意）',
-        'fixed-l2-representation': 'L2 固定位置（示意）',
-        'representative-local-orbit': '代表性近地轨道（示意）',
-      }[provenance.modelClass]
+    ? englishOnly
+      ? {
+          'horizons-vector-trajectory': 'JPL HORIZONS STATE VECTORS · HERMITE INTERPOLATION',
+          'simplified-keplerian-orbit': 'SIMPLIFIED KEPLERIAN ORBIT',
+          'fixed-l2-representation': 'FIXED L2 REPRESENTATION',
+          'representative-local-orbit': 'REPRESENTATIVE LOCAL ORBIT',
+        }[provenance.modelClass]
+      : {
+          'horizons-vector-trajectory': 'JPL Horizons 状态矢量 · Hermite 插值',
+          'simplified-keplerian-orbit': '简化开普勒轨道（示意）',
+          'fixed-l2-representation': 'L2 固定位置（示意）',
+          'representative-local-orbit': '代表性近地轨道（示意）',
+        }[provenance.modelClass]
     : null
   const craftDisclosure = craft
     ? craft.kind === 'deep-probe'
-      ? '深空位置由 JPL Horizons 离线状态矢量插值得到（约 30 天采样 + Hermite 插值）；覆盖范围外钳制在端点。'
+      ? englishOnly
+        ? 'Deep-space positions are interpolated from offline JPL Horizons vectors (about 30-day samples with cubic Hermite interpolation); dates outside coverage clamp to an endpoint.'
+        : '深空位置由 JPL Horizons 离线状态矢量插值得到（约 30 天采样 + Hermite 插值）；覆盖范围外钳制在端点。'
       : craft.anchor === 'earth' || craft.anchor === 'earth-l2'
-        ? '近地/日心航天器采用真实轨道参数的简化开普勒轨道，示意相对位置，并非实时测轨。'
+        ? englishOnly
+          ? 'This near-Earth or Sun–Earth representation uses simplified orbital parameters and is not live operational tracking.'
+          : '近地/日心航天器采用真实轨道参数的简化开普勒轨道，示意相对位置，并非实时测轨。'
         : null
     : null
   const craftModel = craft ? getCraftModel(craft.id) : null
+  const minorBodyModel = minorBody ? getMinorBodyModel(minorBody.id) : null
   const missionStory = craft ? getMissionStoryForCraft(craft.id) : null
+  const archiveProfile = getArchiveProfile(selectedPlanetId)
+  const canFollowCraft = craft ? isCraftSceneVisible(craft, simTime) : true
   const stats = craftStats
     ? [
-        { label: '当前距离', value: craftStats.distance, icon: Ruler },
-        { label: '信号延迟', value: craftStats.signal, icon: Radio },
-        { label: '任务时长', value: craftStats.age, icon: Timer },
-        { label: '巡航速度', value: craftStats.velocity, icon: Gauge },
+        { label: englishOnly ? 'CURRENT DISTANCE' : '当前距离', value: craftStats.distance, icon: Ruler },
+        { label: englishOnly ? 'SIGNAL DELAY' : '信号延迟', value: craftStats.signal, icon: Radio },
+        { label: englishOnly ? 'MISSION AGE' : '任务时长', value: craftStats.age, icon: Timer },
+        { label: englishOnly ? 'CRUISE SPEED' : '巡航速度', value: craftStats.velocity, icon: Gauge },
       ]
     : [
-        { label: '直径', value: `${getDiameter(selectedPlanetId).toLocaleString()} km`, icon: Ruler },
-        { label: '公转周期', value: getPeriodLabel(selectedPlanetId), icon: Timer },
-        { label: '自转周期', value: getRotationLabel(selectedPlanetId), icon: RotateCw },
-        { label: '轨道半径', value: getOrbitLabel(selectedPlanetId), icon: Orbit },
+        { label: englishOnly ? 'DIAMETER' : '直径', value: `${getDiameter(selectedPlanetId).toLocaleString()} km`, icon: Ruler },
+        { label: englishOnly ? 'ORBITAL PERIOD' : '公转周期', value: getPeriodLabel(selectedPlanetId, englishOnly), icon: Timer },
+        { label: englishOnly ? 'ROTATION PERIOD' : '自转周期', value: getRotationLabel(selectedPlanetId, englishOnly), icon: RotateCw },
+        { label: englishOnly ? 'ORBIT SIZE' : '轨道半径', value: getOrbitLabel(selectedPlanetId, englishOnly), icon: Orbit },
       ]
 
   const planet = craft ? null : PLANETS.find((item) => item.id === selectedPlanetId)
@@ -360,7 +461,7 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
           size="icon"
           className="absolute right-2 top-2 z-10 size-8 rounded-full"
           onClick={() => selectPlanet(null)}
-          aria-label="关闭档案"
+          aria-label={englishOnly ? 'Close archive' : '关闭档案'}
         >
           <X />
         </Button>
@@ -370,7 +471,7 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
             <div
               className="body-preview-canvas"
               style={{ filter: `drop-shadow(0 0 22px color-mix(in srgb, ${color}, transparent 62%))` }}
-              title="拖拽旋转预览"
+              title={englishOnly ? 'Drag to rotate preview' : '拖拽旋转预览'}
             >
               <BodyPreview bodyId={selectedPlanetId} />
             </div>
@@ -386,10 +487,12 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
               </span>
             </div>
             <p className="mt-3 font-display text-[10px] tracking-[0.26em] text-amber-200/55">
-              {!pureChinese ? meta.english : null}
+              {languageMode === 'bilingual' ? meta.english : null}
             </p>
             <h2 className="mt-0.5 font-display text-3xl tracking-wide text-amber-50">{name}</h2>
-            <p className="mt-1 text-[11px] text-slate-400">{meta.type}</p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              {englishOnly ? meta.typeEn : meta.type}
+            </p>
           </div>
         </div>
       </section>
@@ -424,7 +527,9 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
           <span className="telemetry-separator" />
           <div>
             <span>{pureChinese ? '状态' : 'STATUS'}</span>
-            <strong>{craft.status}</strong>
+            <strong>
+              {englishOnly ? (craft.status === '在役' ? 'ACTIVE' : 'SILENT') : craft.status}
+            </strong>
           </div>
         </section>
       ) : planet ? (
@@ -444,21 +549,46 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
             <strong>{REAL_MOON_COUNTS[planet.id] ?? planet.moons.length}</strong>
           </div>
         </section>
+      ) : minorBody ? (
+        <section className="telemetry-strip">
+          <div>
+            <span>{pureChinese ? '偏心率' : 'ECCENTRICITY'}</span>
+            <strong>{minorBody.orbit.eccentricity.toFixed(3)}</strong>
+          </div>
+          <span className="telemetry-separator" />
+          <div>
+            <span>{pureChinese ? '倾角' : 'INCLINATION'}</span>
+            <strong>{minorBody.orbit.inclinationDeg.toFixed(2)}°</strong>
+          </div>
+          <span className="telemetry-separator" />
+          <div>
+            <span>{pureChinese ? '类别' : 'CLASS'}</span>
+            <strong>{englishOnly ? minorBody.classificationEn : minorBody.classification}</strong>
+          </div>
+        </section>
       ) : moonHit ? (
         <section className="telemetry-strip">
           <div>
             <span>{pureChinese ? '母体' : 'PARENT BODY'}</span>
-            <strong>{moonHit.parent.name}</strong>
+            <strong>{englishOnly ? moonHit.parent.englishName : moonHit.parent.name}</strong>
           </div>
           <span className="telemetry-separator" />
           <div>
             <span>{pureChinese ? '轨道' : 'ORBIT'}</span>
-            <strong>{moonHit.moon.orbitalPeriod < 0 ? '逆行' : '顺行'}</strong>
+            <strong>
+              {moonHit.moon.orbitalPeriod < 0
+                ? englishOnly
+                  ? 'RETROGRADE'
+                  : '逆行'
+                : englishOnly
+                  ? 'PROGRADE'
+                  : '顺行'}
+            </strong>
           </div>
           <span className="telemetry-separator" />
           <div>
             <span>{pureChinese ? '锁定状态' : 'LOCK STATE'}</span>
-            <strong>潮汐锁定</strong>
+            <strong>{englishOnly ? 'TIDALLY LOCKED' : '潮汐锁定'}</strong>
           </div>
         </section>
       ) : null}
@@ -466,7 +596,7 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
       {craft?.orbitNote ? (
         <div className="flex items-center gap-2 rounded-xl border border-cyan-200/10 bg-cyan-400/[0.04] px-3 py-2 text-[11px] text-cyan-100/75">
           <Waypoints className="size-3.5 shrink-0 text-cyan-200/60" />
-          {craft.orbitNote}
+          {englishOnly ? (craft.orbitNoteEn ?? craft.orbitNote) : craft.orbitNote}
           <span className="ml-auto flex items-center gap-1.5 font-display text-[8px] tracking-[0.14em] text-slate-500">
             <Calendar className="size-3" />
             {pureChinese ? `始于 ${craft.launchDate}` : `SINCE ${craft.launchDate}`}
@@ -485,8 +615,10 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
           </div>
           <p className="mb-2.5 text-[10px] leading-relaxed text-slate-400">
             {pureChinese
-              ? '选择历史节点，模型会立即回到当天并聚焦相关天体。'
-              : '选择历史节点 / PICK AN EVENT TO TRAVEL TO ITS DATE AND FOCUS.'}
+              ? '选择历史节点，模型会回到当天、切换真实比例并聚焦相关天体。'
+              : englishOnly
+                ? 'Pick an event to travel to its date, enable true scale, and focus the related target.'
+                : '选择历史节点 / TRAVEL TO ITS DATE IN TRUE SCALE AND FOCUS.'}
           </p>
           <div className="mission-timeline">
             {missionStory.events.map((event) => {
@@ -505,7 +637,7 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
                   <span className="mission-event-dot" />
                   <span className="min-w-0 flex-1">
                     <small>{event.date.replaceAll('-', ' · ')}</small>
-                    <strong>{event.title}</strong>
+                    <strong>{englishOnly ? event.titleEn : event.title}</strong>
                   </span>
                   <Play className="mt-1 size-3 shrink-0 text-amber-200/65" />
                 </button>
@@ -515,17 +647,52 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
         </section>
       ) : null}
 
+      {archiveProfile ? (
+        <section className="source-card">
+          <div className="section-rule mb-2">
+            <span>{pureChinese ? '任务纵览' : 'MISSION DOSSIER'}</span>
+            <span>OBJECTIVE · LEGACY</span>
+          </div>
+          <div className="space-y-2.5 text-[10px] leading-relaxed">
+            <div>
+              <p className="font-display text-[7px] tracking-[0.13em] text-cyan-200/45">
+                {pureChinese ? '核心目标' : 'PRIMARY OBJECTIVE'}
+              </p>
+              <p className="mt-1 text-slate-300/80">
+                {englishOnly ? archiveProfile.objectiveEn : archiveProfile.objective}
+              </p>
+            </div>
+            <div>
+              <p className="font-display text-[7px] tracking-[0.13em] text-amber-200/45">
+                {pureChinese ? '科学遗产' : 'SCIENTIFIC LEGACY'}
+              </p>
+              <p className="mt-1 text-slate-300/80">
+                {englishOnly ? archiveProfile.legacyEn : archiveProfile.legacy}
+              </p>
+            </div>
+          </div>
+          <ul className="mt-3 space-y-1.5 border-t border-white/[0.06] pt-2.5">
+            {archiveProfile.highlights.map((highlight) => (
+              <li key={highlight.en} className="flex gap-2 text-[9px] leading-relaxed text-slate-400">
+                <span className="mt-1.5 size-1 shrink-0 rounded-full bg-amber-200/65" />
+                {englishOnly ? highlight.en : highlight.zh}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {craftDisclosure ? (
         <p className="rounded-xl border border-amber-200/10 bg-amber-300/[0.04] px-3 py-2 text-[10px] leading-relaxed text-amber-100/65">
-          数据说明：{craftDisclosure}
+          {englishOnly ? `DATA NOTE: ${craftDisclosure}` : `数据说明：${craftDisclosure}`}
         </p>
       ) : null}
 
       {craft && trueScale ? (
         <p className="rounded-xl border border-cyan-200/10 bg-cyan-300/[0.035] px-3 py-2 text-[10px] leading-relaxed text-cyan-100/65">
           {pureChinese
-            ? `真实比例：实体最长展开跨度约 ${craft.maxSpanM} m；十字环仅为屏幕空间定位标记，不代表航天器体积。`
-            : `TRUE SCALE · physical span ≈ ${craft.maxSpanM} m. The reticle is a screen-space locator, not the craft's volume.`}
+            ? `真实比例：实体最长展开跨度约 ${craft.maxSpanM} m；识别模型随镜头缩放并设可读上下限，未选中目标另有屏幕准心。`
+            : `TRUE SCALE · physical span ≈ ${craft.maxSpanM} m. The identification model responds to zoom with readability bounds; unselected targets also use screen reticles.`}
         </p>
       ) : null}
 
@@ -536,9 +703,9 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
             <span>PROVENANCE</span>
           </div>
           <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-[10px]">
-            <div className="col-span-2"><dt>{pureChinese ? '数据纪元' : 'EPOCH'}</dt><dd>{provenance?.sourceEpoch ?? '2026-01-01'}</dd></div>
-            <div className="col-span-2"><dt>{pureChinese ? '位置精度' : 'FIDELITY'}</dt><dd>{fidelityLabel ?? '简化轨道'}</dd></div>
-            <div className="col-span-2"><dt>{pureChinese ? '数据来源' : 'SOURCE'}</dt><dd>{provenance?.source ?? 'NASA / JPL 公开资料 · 离线快照'}</dd></div>
+            <div className="col-span-2"><dt>{pureChinese ? '数据纪元' : 'EPOCH'}</dt><dd>{englishOnly ? (provenance?.sourceEpoch ?? '2026-01-01').replace(' 至 ', ' TO ') : provenance?.sourceEpoch ?? '2026-01-01'}</dd></div>
+            <div className="col-span-2"><dt>{pureChinese ? '位置精度' : 'FIDELITY'}</dt><dd>{fidelityLabel ?? (englishOnly ? 'SIMPLIFIED ORBIT' : '简化轨道')}</dd></div>
+            <div className="col-span-2"><dt>{pureChinese ? '数据来源' : 'SOURCE'}</dt><dd>{provenance?.source ?? (englishOnly ? 'NASA / JPL PUBLIC DATA · OFFLINE SNAPSHOT' : 'NASA / JPL 公开资料 · 离线快照')}</dd></div>
             <div className="col-span-2"><dt>{pureChinese ? '最长展开跨度' : 'MAX DEPLOYED SPAN'}</dt><dd>≈ {craft.maxSpanM} m</dd></div>
             <div className="col-span-2"><dt>{pureChinese ? '3D 模型' : '3D MODEL'}</dt><dd>{craftModel ? craftModel.credit : pureChinese ? '程序化示意模型（无官方模型）' : 'PROCEDURAL MODEL (NO OFFICIAL ASSET)'}</dd></div>
           </dl>
@@ -546,9 +713,43 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
         </section>
       ) : null}
 
+      {minorBody ? (
+        <section className="source-card">
+          <div className="section-rule mb-2">
+            <span>{pureChinese ? '为何重要' : 'WHY IT MATTERS'}</span>
+            <span>SCIENCE PROFILE</span>
+          </div>
+          <p className="text-[11px] leading-[1.7] text-slate-300/80">
+            {englishOnly ? minorBody.significanceEn : minorBody.significance}
+          </p>
+          <dl className="mt-3 grid grid-cols-3 gap-1.5">
+            {minorBody.facts.map((fact) => (
+              <div key={fact.labelEn} className="rounded-lg border border-white/[0.07] bg-white/[0.025] p-2">
+                <dt className="font-display text-[7px] tracking-[0.1em] text-cyan-200/45">
+                  {englishOnly ? fact.labelEn : fact.label}
+                </dt>
+                <dd className="mt-1 text-[9px] leading-snug text-slate-200">
+                  {englishOnly ? (fact.valueEn ?? fact.value) : fact.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <a className="story-source mt-3 inline-flex" href={minorBody.sourceUrl} target="_blank" rel="noreferrer">
+            {pureChinese ? '查看 NASA 档案' : 'OPEN NASA ARCHIVE'}
+            <Waypoints className="size-3" />
+          </a>
+          {minorBodyModel ? (
+            <a className="story-source ml-2 mt-3 inline-flex" href={minorBodyModel.creditUrl} target="_blank" rel="noreferrer">
+              {pureChinese ? `3D 模型 · ${minorBodyModel.credit}` : `3D MODEL · ${minorBodyModel.credit}`}
+              <Waypoints className="size-3" />
+            </a>
+          ) : null}
+        </section>
+      ) : null}
+
       <section>
         <div className="section-rule">
-          <span>观测简报</span>
+          <span>{englishOnly ? 'OBSERVATION BRIEF' : '观测简报'}</span>
           <span>{pureChinese ? '观测记录' : 'FIELD NOTES'}</span>
         </div>
         <p className="text-[12px] leading-[1.75] text-slate-300/80">{description}</p>
@@ -560,17 +761,23 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
       <Button
         variant={followPlanet ? 'default' : 'secondary'}
         className="h-10 w-full rounded-xl"
+        disabled={!canFollowCraft}
         onClick={() => setFollowPlanet(!followPlanet)}
       >
-        {followPlanet ? (
+        {!canFollowCraft ? (
           <>
             <Satellite />
-            已锁定目标 · 解除跟随
+            {englishOnly ? 'ARCHIVE ONLY · CRAFT NO LONGER IN FLIGHT' : '仅档案 · 航天器已不在飞行'}
+          </>
+        ) : followPlanet ? (
+          <>
+            <Satellite />
+            {englishOnly ? 'TARGET LOCKED · RELEASE FOLLOW' : '已锁定目标 · 解除跟随'}
           </>
         ) : (
           <>
             <Crosshair />
-            锁定并跟随目标
+            {englishOnly ? 'LOCK AND FOLLOW TARGET' : '锁定并跟随目标'}
           </>
         )}
       </Button>

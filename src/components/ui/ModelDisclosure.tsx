@@ -5,7 +5,7 @@ import { useSimulation } from '@/hooks/useSimulation'
 
 /** A small, deliberately plain-language disclosure for the observatory model. */
 export function ModelDisclosure() {
-  const { pureChinese } = useSimulation()
+  const { pureChinese, englishOnly } = useSimulation()
   const [open, setOpen] = useState(false)
 
   return (
@@ -24,7 +24,7 @@ export function ModelDisclosure() {
         <div className="absolute right-0 top-10 z-50 w-[min(310px,calc(100vw-32px))] rounded-xl border border-cyan-200/15 bg-[#071321]/95 p-3.5 shadow-2xl backdrop-blur-xl">
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="eyebrow text-amber-200/65">{pureChinese ? '模型说明' : 'MODEL NOTE'}</p>
-            <button type="button" className="text-slate-500 hover:text-slate-200" onClick={() => setOpen(false)} aria-label="关闭">
+            <button type="button" className="text-slate-500 hover:text-slate-200" onClick={() => setOpen(false)} aria-label={englishOnly ? 'Close' : '关闭'}>
               <X className="size-3.5" />
             </button>
           </div>

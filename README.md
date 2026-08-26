@@ -1,17 +1,18 @@
 # 太阳系模拟
 
-具有未来观测台视觉的交互式三维太阳系：八大行星与冥王星、26 颗天然卫星、10 个著名人类航天器、小行星带、真实星历驱动的行星位置与时间机器（1950–2050），支持严格真实比例模式与可调的中文参数控制台。位置与时间来自打包的 JPL 公开数据，用于模型展示，不代表实时测量。
+具有未来观测台视觉的交互式三维太阳系：八大行星与冥王星、26 颗天然卫星、9 个重点小天体/彗星、18 个著名人类航天器、小行星带、真实星历驱动的位置与时间机器（1950–2050），支持严格真实比例和纯中文 / 双语 / 纯英文界面。位置与时间来自打包的 JPL 公开数据，用于模型展示，不代表实时测量。
 
 ## 功能
 
 - **真实星历**：行星角位置全时段采用 JPL「Approximate Positions of the Major Planets」开普勒根数 + 世纪变率（1800–2050 有效，误差远小于屏幕像素）；默认艺术化模式仅压缩径向距离，行星方位与真实天空一致
-- **严格真实比例模式**：一键切换，半径与轨道共用同一 km→场景映射，无任何体积放大（太阳半径约为地球轨道的 1/215）；航天器也按公开资料中的最大展开跨度（米）换算，十字环仅为独立的屏幕空间定位 UI，不代表实体体积
-- **时间机器（1950–2050）**：时间可倒流（倒放按钮）、日期弹窗直接跳转任意日期、「今天」按钮同步真实当前日期；旅行者 2 号与新视野号的航天器档案内可直接选择任务节点，模型回溯后自动暂停在事件当天
-- **四个深空探测器真实轨迹**：旅行者 1/2 号、先驱者 10 号、新视野号全部使用打包 JPL Horizons 状态矢量（30 天采样 + 三次 Hermite 插值），覆盖发射日至 2050 年；每个航天器及轨迹仅在其真实发射日期后出现，覆盖范围外钳制端点，绝不外推；艺术化距离压缩采用连续斜率曲线，不引入非物理折角
-- **NASA 官方 3D 模型**：旅行者、先驱者 10 号、新视野号、朱诺、帕克、韦伯、哈勃、国际空间站使用 NASA 3D Resources 官方 GLB（档案预览可拖拽旋转，艺术化场景内聚焦时同步显示）；真实比例场景按公开展开尺寸渲染实体、以独立定位环保证可发现性；模型无自发光补光，加载失败自动回退程序化模型；天宫无官方模型，保留程序化模型并在档案注明
+- **严格真实比例模式**：一键切换，半径与轨道共用同一 km→场景映射，无任何物理体积放大（太阳半径约为地球轨道的 1/215）；航天器实体也按公开最大展开跨度换算，另叠加恒定像素大小的模型识别层与准心，二者不参与物理尺寸计算
+- **时间机器（1950–2050）**：时间可倒流、日期弹窗直接跳转任意日期、「今天」按钮同步真实当前日期；10 组任务故事可从任务页或航天器档案触发，回放会自动暂停、切换真实比例并聚焦历史目标，避免艺术化放大造成近飞穿模
+- **十二个深空任务真实轨迹**：旅行者 1/2 号、先驱者 10 号、新视野号，以及卡西尼、伽利略、黎明、罗塞塔、OSIRIS-REx/APEX、Lucy、Psyche、Europa Clipper 使用打包 JPL Horizons 状态矢量（30 天采样 + 三次 Hermite 插值）；航天器仅在发射后出现，已撞毁/受控进入天体的任务在终止日后不再渲染实体，档案仍可查阅
+- **NASA 官方 3D 模型**：在原有旅行者、先驱者、新视野、朱诺、帕克、韦伯、哈勃、国际空间站基础上，新增卡西尼、伽利略、黎明、罗塞塔、OSIRIS-REx、Europa Clipper，以及谷神星、灶神星、贝努官方 GLB；真实比例下选中航天器仍显示屏幕尺度的可旋转识别模型；Europa Clipper 的 34.05 MiB 原始文件经 Meshopt/WebP 优化为约 2.6 MiB 以符合 Pages 限制
+- **小天体与彗星**：谷神星、灶神星、贝努、67P、哈雷彗星、欧律巴忒斯、灵神星、阿波菲斯和阿罗科斯均采用 JPL SBDB 离线轨道根数，具备真实空间方位、轨道、搜索、实时光时和扩展科学档案
 - **目标搜索**：目标列表支持中英文模糊搜索，桌面端按 `/` 直达
 - **实时读数**：档案面板按当前模型时刻实时计算距太阳/距地球（AU + km）与单向光时（NASA Eyes 风格）
-- **URL 深链**：`#target=jupiter&date=1986-01-24&scale=true` 直接分享定位，加载时自动应用
+- **URL 深链**：`#target=jupiter&date=1986-01-24&scale=true&lang=en` 直接分享目标、日期、比例和语言
 - 基于 NASA 测绘数据的真实行星贴图（2K），含地球云层与土星环实拍条带；离线时自动回退到程序化贴图
 - 4K 真实银河全景天幕（ESO，按银道面真实倾角摆放）叠加程序化星野；背景启用深度遮挡，不会穿透太阳或天体表面
 - 太阳、八大行星、冥王星与 26 颗天然卫星：月球、火卫一/二、木卫一至五、土卫一/二/三/四/五/六/八、天卫一/二/三/四/五、海卫一（逆行）/八、冥卫一至五
@@ -21,11 +22,11 @@
 - 暂停 / 播放，时间倍率 0.01x–1000x；快捷键：空格暂停、R 重置相机、/ 搜索、Esc 关闭面板
 - 真实贴图可一键切换为轻量程序化贴图，兼顾低配设备
 - 沉浸、观测、纯净三套场景预设，支持黄道网格、航天器开关与自动巡航；真实比例下物理滑杆自动锁定为 1×
-- 桌面观测台与移动端抽屉自适应布局，全部界面支持纯中文 / 双语切换
+- 桌面观测台与移动端抽屉自适应布局，全部界面支持纯中文 / 双语 / 纯英文三模式，选择会保存在浏览器
 
 ## 环境
 
-- Node.js 20+
+- Node.js 22（与 Docker 和 Cloudflare Pages 构建环境一致）
 - 包管理器：npm
 
 ## 安装与运行
@@ -65,6 +66,24 @@ docker run -d --name solar-system-sim -p 4317:80 --restart unless-stopped solar-
 
 更换端口：把 `docker-compose.yml` 中的 `4317:80` 改为 `<你的端口>:80`。
 
+## Cloudflare Pages
+
+项目是纯静态 Vite 应用，已包含 Pages 配置、缓存规则和单文件 25 MiB 上限检查：
+
+```bash
+npm ci
+npm run build:pages
+```
+
+Cloudflare Pages 的 Git 集成设置：
+
+- Framework preset：`Vite`
+- Build command：`npm run build:pages`
+- Build output directory：`dist`
+- Node.js：仓库 `.node-version` 固定为 `22`
+
+`public/_headers` 会让带哈希的 Vite 资源长期不可变缓存，模型和贴图分别使用可重新验证的缓存周期；HTML 始终重新验证。应用使用井号深链，不需要 SPA 回退规则，也不会把缺失的 GLB 误返回为 `index.html`。直接上传可运行 `npx wrangler pages deploy dist`，`wrangler.jsonc` 已声明输出目录。
+
 ## 操作
 
 | 操作 | 说明 |
@@ -79,7 +98,8 @@ docker run -d --name solar-system-sim -p 4317:80 --restart unless-stopped solar-
 | 时间滑块 | 0.01x–1000x，1x 约等于「1 秒推进 1 地球日」；倒放按钮让时间回溯 |
 | 底部日期按钮 | 时间机器：跳转任意日期（1950–2050）、回到今天或 2026 起点 |
 | 空格 / R / `/` / Esc | 暂停播放 / 重置相机 / 搜索目标 / 关闭面板 |
-| URL 井号参数 | `#target=<id>&date=<YYYY-MM-DD>&scale=true` 深链定位 |
+| URL 井号参数 | `#target=<id>&date=<YYYY-MM-DD>&scale=true&lang=en` 深链定位；语言支持 `zh / bilingual / en` |
+| 语言按钮 | 依次切换双语、纯中文、纯英文 |
 | 跟随 | 相机目标锁定当前天体 |
 | 重置相机 | 回到总览并取消跟随 |
 
@@ -111,6 +131,14 @@ CAPTURE_URL='http://localhost:4317/#target=earth&scale=true' node scripts/captur
 | 旅行者 2 号 | `-32` | 1977-08-21 至 2051-01-11 |
 | 先驱者 10 号 | `-23` | 1972-03-04 至 2049-12-24 |
 | 新视野号 | `-98` | 2006-01-20 至 2049-12-30 |
+| 卡西尼号 | `-82` | 1997-10-16 至 2017-09 |
+| 伽利略号 | `-77` | 1989-10-20 至 2003-09 |
+| 黎明号 | `-203` | 2007-09-28 至 2043-10（含任务后谷神星轨道预测） |
+| 罗塞塔号 | `-226` | 2004-03-03 至 2016-09 |
+| OSIRIS-REx/APEX | `-64` | 2016-09-09 至 2030-03 |
+| Lucy | `-49` | 2021-10-17 至 2033-04 |
+| Psyche | `-255` | 2023-10-14 至 2029-02（当前 JPL 参考轨迹上限） |
+| Europa Clipper | `-159` | 2024-10-15 至 2034-09 |
 
 精确 API 查询、原始响应 SHA-256 和采样范围记录于 `src/data/horizons-provenance.json`。
 
@@ -124,8 +152,8 @@ npx esbuild scripts/validate-ephemeris.ts --bundle --format=esm --platform=node 
 
 ## 素材来源
 
-- 航天器 3D 模型：[NASA 3D Resources](https://science.nasa.gov/3d-resources/)（旅行者、先驱者 10 号、新视野号、朱诺、帕克太阳探测器、韦伯、哈勃、国际空间站官方 GLB，存放于 `public/models/`）。依 NASA 媒体使用条款署名；本项目与 NASA 无隶属关系，NASA 亦未对本项目背书。天宫空间站无官方模型，使用程序化模型
-- 行星星历：[JPL Approximate Positions of the Major Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html)；深空探测器轨迹：[JPL Horizons](https://ssd.jpl.nasa.gov/horizons/)
+- 航天器及谷神星、灶神星、贝努 3D 模型：[NASA 3D Resources](https://science.nasa.gov/3d-resources/)（具体署名与原始页面显示在各目标档案，文件存放于 `public/models/`）。Europa Clipper 为官方 GLB 的网页优化衍生文件；依 NASA 媒体使用条款署名。本项目与 NASA 无隶属关系，NASA 亦未对本项目背书
+- 行星星历：[JPL Approximate Positions of the Major Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html)；小天体轨道与物理参数：[NASA/JPL Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html)；深空探测器轨迹：[JPL Horizons](https://ssd.jpl.nasa.gov/horizons/)
 - 太阳、水星、金星、地球（含云层）、火星、木星贴图：[Solar System Scope Textures](https://www.solarsystemscope.com/textures/)（CC BY 4.0，基于 NASA 测绘数据）
 - 土星、天王星、海王星、冥王星、土星环贴图：threex.planets（源自 Planet Pixel Emporium）
 - 月球贴图：three.js 官方示例资源

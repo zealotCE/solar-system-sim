@@ -10,10 +10,15 @@ import {
   type ReactNode,
 } from 'react'
 import { getMissionStoryEvent, type MissionStoryEvent } from '../data/missionStories'
-import { getSpacecraftById, isCraftLaunched } from '../data/spacecraft'
+import {
+  getSpacecraftById,
+  isCraftLaunched,
+  isCraftSceneVisible,
+} from '../data/spacecraft'
 import { SIM_TIME_MAX_YEARS, SIM_TIME_MIN_YEARS, utcMsToSimTime } from '../lib/utils'
 
 export type ScenePreset = 'cinematic' | 'observatory' | 'minimal' | 'custom'
+export type LanguageMode = 'zh' | 'bilingual' | 'en'
 
 export type SelectedStoryEvent = {
   storyId: string
@@ -32,6 +37,8 @@ export type SimulationState = {
   /** +1 plays forward, −1 rewinds. */
   timeDirection: 1 | -1
   simTime: number
+  /** Ephemeris epoch used to build stable orbit geometry. */
+  orbitEpoch: number
   simTimeRef: { current: number }
   selectedPlanetId: string | null
   followPlanet: boolean
@@ -52,7 +59,9 @@ export type SimulationState = {
   scenePreset: ScenePreset
   cameraResetNonce: number
   focusNonce: number
+  languageMode: LanguageMode
   pureChinese: boolean
+  englishOnly: boolean
   selectedStoryEvent: SelectedStoryEvent | null
   togglePlay: () => void
   setSpeed: (value: number) => void
@@ -81,7 +90,7 @@ export type SimulationState = {
   setUsePhotoTextures: (value: boolean) => void
   applyScenePreset: (preset: Exclude<ScenePreset, 'custom'>) => void
   resetCamera: () => void
-  setPureChinese: (value: boolean) => void
+  setLanguageMode: (value: LanguageMode) => void
   selectStoryEvent: (storyId: string, eventId: string) => void
   clearStoryEvent: () => void
   syncDisplayTime: () => void
@@ -98,6 +107,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
   const [speed, setSpeedState] = useState(80)
   const [timeDirection, setTimeDirectionState] = useState<1 | -1>(1)
   const [simTime, setSimTime] = useState(0)
+  const [orbitEpoch, setOrbitEpoch] = useState(0)
   const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(null)
   const [followPlanet, setFollowPlanet] = useState(false)
   const [showOrbits, setShowOrbits] = useState(true)
@@ -117,13 +127,29 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
   const [scenePreset, setScenePreset] = useState<ScenePreset>('cinematic')
   const [cameraResetNonce, setCameraResetNonce] = useState(0)
   const [focusNonce, setFocusNonce] = useState(0)
-  const [pureChinese, setPureChinese] = useState(false)
+  const [languageMode, setLanguageModeState] = useState<LanguageMode>(() => {
+    if (typeof window === 'undefined') return 'bilingual'
+    const saved = window.localStorage.getItem('solar-language-mode')
+    return saved === 'zh' || saved === 'en' || saved === 'bilingual' ? saved : 'bilingual'
+  })
+  const pureChinese = languageMode === 'zh'
+  const englishOnly = languageMode === 'en'
   const [selectedStoryEvent, setSelectedStoryEvent] = useState<SelectedStoryEvent | null>(null)
   const simTimeRef = useRef(0)
 
-  const togglePlay = useCallback(() => {
-    setIsPlaying((value) => !value)
+  const setLanguageMode = useCallback((value: LanguageMode) => {
+    setLanguageModeState(value)
   }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem('solar-language-mode', languageMode)
+    document.documentElement.lang = englishOnly ? 'en' : 'zh-Hans'
+  }, [englishOnly, languageMode])
+
+  const togglePlay = useCallback(() => {
+    if (isPlaying) setOrbitEpoch(simTimeRef.current)
+    setIsPlaying(!isPlaying)
+  }, [isPlaying])
 
   const setSpeed = useCallback((value: number) => {
     setSpeedState(Math.min(1000, Math.max(0.01, value)))
@@ -137,6 +163,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     const next = clamp(value, SIM_TIME_MIN_YEARS, SIM_TIME_MAX_YEARS)
     simTimeRef.current = next
     setSimTime(next)
+    setOrbitEpoch(next)
   }, [])
 
   const stepTime = useCallback((days: number) => {
@@ -147,11 +174,13 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     )
     simTimeRef.current = next
     setSimTime(next)
+    setOrbitEpoch(next)
   }, [])
 
   const resetSimulationTime = useCallback(() => {
     simTimeRef.current = 0
     setSimTime(0)
+    setOrbitEpoch(0)
   }, [])
 
   const jumpToDate = useCallback(
@@ -170,9 +199,11 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     if (craft && !isCraftLaunched(craft, simTimeRef.current)) return
     setSelectedPlanetId(id)
     if (id) {
-      // Star Walk-style focus: selecting a body locks on and glides the camera in.
-      setFollowPlanet(true)
-      setFocusNonce((value) => value + 1)
+      // Completed impact/destruction missions remain available as archives but
+      // cannot be followed as if intact hardware still existed in the scene.
+      const canFollow = !craft || isCraftSceneVisible(craft, simTimeRef.current)
+      setFollowPlanet(canFollow)
+      if (canFollow) setFocusNonce((value) => value + 1)
     } else {
       setFollowPlanet(false)
     }
@@ -190,11 +221,25 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
 
   const markCustom = useCallback(() => setScenePreset('custom'), [])
 
-  const setTrueScale = useCallback((value: boolean) => {
-    setTrueScaleState(value)
-    // Re-frame the whole system since distances change drastically.
-    setCameraResetNonce((nonce) => nonce + 1)
-  }, [])
+  const setTrueScale = useCallback(
+    (value: boolean) => {
+      setTrueScaleState(value)
+      const selectedCraft = getSpacecraftById(selectedPlanetId)
+      const canFocus =
+        !selectedCraft || isCraftSceneVisible(selectedCraft, simTimeRef.current)
+      if (selectedPlanetId && canFocus) {
+        // Distances change drastically between layouts. Keep the selection and
+        // re-run its focus flight in the new coordinate system instead of
+        // dropping the user back at the system overview.
+        setFollowPlanet(true)
+        setFocusNonce((nonce) => nonce + 1)
+      } else {
+        if (selectedCraft) setFollowPlanet(false)
+        setCameraResetNonce((nonce) => nonce + 1)
+      }
+    },
+    [selectedPlanetId],
+  )
 
   const setShowAsteroids = useCallback(
     (value: boolean) => {
@@ -317,9 +362,15 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     const nextTime = eventSimTime(event.date)
     simTimeRef.current = nextTime
     setSimTime(nextTime)
+    setOrbitEpoch(nextTime)
     // Keep the historical configuration on screen instead of immediately
     // racing away at the current playback multiplier.
     setIsPlaying(false)
+    // Flybys and close approaches visibly intersect enlarged bodies in the
+    // stylized scene. Historical playback therefore uses one physical scale
+    // for body volumes, orbits, and Horizons trajectories.
+    setTrueScaleState(true)
+    setShowSpacecraft(true)
     setSelectedStoryEvent({ storyId, event })
     setSelectedPlanetId(event.focusTargetId)
     setFollowPlanet(true)
@@ -340,6 +391,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       speed,
       timeDirection,
       simTime,
+      orbitEpoch,
       simTimeRef,
       selectedPlanetId,
       followPlanet,
@@ -362,7 +414,9 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       scenePreset,
       cameraResetNonce,
       focusNonce,
+      languageMode,
       pureChinese,
+      englishOnly,
       selectedStoryEvent,
       togglePlay,
       setSpeed,
@@ -391,7 +445,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       applyScenePreset,
       resetCamera,
       syncDisplayTime,
-      setPureChinese,
+      setLanguageMode,
       selectStoryEvent,
       clearStoryEvent,
     }),
@@ -400,6 +454,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       speed,
       timeDirection,
       simTime,
+      orbitEpoch,
       selectedPlanetId,
       followPlanet,
       showOrbits,
@@ -420,7 +475,9 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       scenePreset,
       cameraResetNonce,
       focusNonce,
+      languageMode,
       pureChinese,
+      englishOnly,
       selectedStoryEvent,
       togglePlay,
       setSpeed,
@@ -443,7 +500,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       applyScenePreset,
       resetCamera,
       syncDisplayTime,
-      setPureChinese,
+      setLanguageMode,
       selectStoryEvent,
       clearStoryEvent,
     ],

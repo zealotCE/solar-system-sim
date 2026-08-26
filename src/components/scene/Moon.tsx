@@ -28,6 +28,7 @@ export function Moon({ moon, parent }: MoonProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const hitRef = useRef<THREE.Mesh>(null)
   const labelRef = useRef<HTMLDivElement>(null)
+  const labelVisibleRef = useRef(false)
   const { size } = useThree()
   const {
     simTimeRef,
@@ -40,6 +41,7 @@ export function Moon({ moon, parent }: MoonProps) {
     inclinationScale,
     usePhotoTextures,
     trueScale,
+    englishOnly,
   } = useSimulation()
   const { texture, isPhoto } = useBodySurface(
     moon.id,
@@ -68,13 +70,18 @@ export function Moon({ moon, parent }: MoonProps) {
     })
     groupRef.current.position.set(x, y, z)
     meshRef.current.rotation.y = (simTimeRef.current * 365.25 * Math.PI * 2) / moon.rotationPeriod
-    const targetScale = planetScale * (selected ? 1.14 : 1)
+    const targetScale = planetScale * (selected && !trueScale ? 1.14 : 1)
     const nextScale = THREE.MathUtils.lerp(visualRef.current.scale.x, targetScale, 0.1)
     visualRef.current.scale.setScalar(nextScale)
 
     groupRef.current.getWorldPosition(scratchWorld)
     const cameraDistance = camera.position.distanceTo(scratchWorld)
-    const nearSystem = selected || cameraDistance < labelDistance
+    const nearSystem =
+      selected ||
+      (labelVisibleRef.current
+        ? cameraDistance < labelDistance * 1.08
+        : cameraDistance < labelDistance * 0.92)
+    labelVisibleRef.current = nearSystem
 
     if (labelRef.current) {
       labelRef.current.style.opacity = nearSystem ? '1' : '0'
@@ -150,10 +157,10 @@ export function Moon({ moon, parent }: MoonProps) {
               roughness={0.92}
               metalness={0.04}
               emissive={selected ? '#6b655c' : '#1a1816'}
-              emissiveIntensity={selected ? 0.35 : isPhoto ? 0.04 : 0.08}
+              emissiveIntensity={selected ? 0.16 : isPhoto ? 0.015 : 0.035}
             />
           </mesh>
-          {selected ? (
+          {selected && !trueScale ? (
             <mesh rotation={[Math.PI / 2, 0, 0]}>
               <torusGeometry args={[radius * 1.75, radius * 0.075, 8, 64]} />
               <meshBasicMaterial color="#f4dfb2" transparent opacity={0.85} depthWrite={false} />
@@ -163,6 +170,7 @@ export function Moon({ moon, parent }: MoonProps) {
         {showLabels ? (
           <Html
             center
+            eps={0.25}
             zIndexRange={[12, 0]}
             style={{ pointerEvents: 'none' }}
             position={[0, trueScale ? radius * 2.2 : radius * planetScale + 0.16, 0]}
@@ -173,7 +181,7 @@ export function Moon({ moon, parent }: MoonProps) {
               style={{ transition: 'opacity 240ms ease' }}
             >
               <span className="planet-label-dot" style={{ backgroundColor: moon.color }} />
-              {moon.name}
+              {englishOnly ? moon.englishName : moon.name}
             </div>
           </Html>
         ) : null}
