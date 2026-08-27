@@ -48,6 +48,10 @@ import {
   isEarthNeighborhoodCraft,
   selectEarthCraftDetailVisibility,
 } from '@/lib/earthCraftLod'
+import {
+  createStableHtmlPosition,
+  selectDistanceDetailVisibility,
+} from '@/lib/sceneLabels'
 import { getCraftModel } from '@/lib/spacecraftModels'
 import {
   ACTUAL_TRAJECTORY_GRADIENT_START,
@@ -62,14 +66,14 @@ import {
 } from '@/lib/trajectorySemantics'
 import { CraftGlbModel } from './CraftGlbModel'
 
-type MarkerSizes = { mesh: number; hit: number; labelAlways: boolean }
+type MarkerSizes = { mesh: number; hit: number }
 
 const MARKER_SIZES: Record<SpacecraftKind, MarkerSizes> = {
-  'deep-probe': { mesh: 0.42, hit: 1.6, labelAlways: true },
-  'solar-probe': { mesh: 0.2, hit: 0.8, labelAlways: true },
-  telescope: { mesh: 0.085, hit: 0.34, labelAlways: false },
-  station: { mesh: 0.075, hit: 0.3, labelAlways: false },
-  orbiter: { mesh: 0.13, hit: 0.5, labelAlways: false },
+  'deep-probe': { mesh: 0.42, hit: 1.6 },
+  'solar-probe': { mesh: 0.2, hit: 0.8 },
+  telescope: { mesh: 0.085, hit: 0.34 },
+  station: { mesh: 0.075, hit: 0.3 },
+  orbiter: { mesh: 0.13, hit: 0.5 },
 }
 
 const LOCATOR_PIXELS = 20
@@ -162,6 +166,10 @@ function EarthCraftOverviewLabels({
     [orbitScale, eccentricityScale, inclinationScale, trueScale],
   )
   const referenceCraft = crafts[0]
+  const calculateLabelPosition = useMemo(
+    () => createStableHtmlPosition(),
+    [],
+  )
   const initialAnchor = referenceCraft
     ? getSpacecraftAnchorPosition(referenceCraft, simTime, modifiers)
     : ([0, 0, 0] as const)
@@ -183,8 +191,9 @@ function EarthCraftOverviewLabels({
       <Html
         center
         eps={0.5}
+        calculatePosition={calculateLabelPosition}
         zIndexRange={[13, 1]}
-        style={{ pointerEvents: 'auto' }}
+        style={{ pointerEvents: 'none' }}
       >
         <div className="earth-craft-cluster">
           <div className="earth-craft-cluster__heading">
@@ -383,8 +392,8 @@ function SpacecraftMarker({
   const hitRef = useRef<THREE.Mesh>(null)
   const locatorRef = useRef<THREE.Sprite>(null)
   const trailCursorRef = useRef<THREE.Group>(null)
-  const labelRef = useRef<HTMLDivElement>(null)
-  const labelVisibleRef = useRef(false)
+  const detailVisibleRef = useRef(false)
+  const [detailVisible, setDetailVisible] = useState(false)
   const { size } = useThree()
   const {
     simTimeRef,
@@ -405,6 +414,11 @@ function SpacecraftMarker({
   } = useSimulation()
   const locator = useMemo(() => getCraftLocatorTexture(), [])
   const selected = selectedPlanetId === craft.id
+  const renderDetail = selected || detailVisible
+  const calculateLabelPosition = useMemo(
+    () => createStableHtmlPosition(),
+    [],
+  )
   const trajectorySnapshot = useTrajectory(craft.trajectoryId ?? null, {
     load: selected,
   })
@@ -419,7 +433,6 @@ function SpacecraftMarker({
     // Picking remains generous but invisible; it does not affect the rendered
     // scale of the spacecraft marker.
     hit: baseSizes.hit,
-    labelAlways: baseSizes.labelAlways,
   }
   const model = getCraftModel(craft.id)
   const stylizedModelRadius = getCraftFocusRadius(craft, false) * 1.7
@@ -427,15 +440,24 @@ function SpacecraftMarker({
   // therefore lands near 16% of viewport height before the safety bounds apply.
   const proxyWorldSpan =
     getCraftFocusRadius(craft, true) * TRUE_SCALE_PROXY_REFERENCE_RATIO
+  const trailRequested = showOrbits && renderDetail
 
   const trailLodGuide = useMemo(
     () =>
-      getDeepProbeTrailLodGuide(trajectory, {
-        orbitScale,
-        inclinationScale,
-        trueScale,
-      }),
-    [trajectory, orbitScale, inclinationScale, trueScale],
+      trailRequested
+        ? getDeepProbeTrailLodGuide(trajectory, {
+            orbitScale,
+            inclinationScale,
+            trueScale,
+          })
+        : [],
+    [
+      trajectory,
+      orbitScale,
+      inclinationScale,
+      trueScale,
+      trailRequested,
+    ],
   )
   const trailErrorSamples = useMemo(
     () => getPolylineSagittaSamples(trailLodGuide),
@@ -448,14 +470,15 @@ function SpacecraftMarker({
     initialIndex: selected ? HORIZONS_TRAIL_QUALITY_ORDER.length - 1 : 0,
     maxIndex: HORIZONS_TRAIL_QUALITY_ORDER.length - 1,
     forceMax: selected,
-    enabled: showOrbits && Boolean(trajectory),
+    enabled: trailRequested && Boolean(trajectory),
   })
   const trailQuality = HORIZONS_TRAIL_QUALITY_ORDER[trailTierIndex]
 
   // Reconstructed flight path straight from the offline Horizons samples.
   const fullTrail = useMemo(
-    () =>
-      getDeepProbeTrailWaypoints(
+    () => {
+      if (!trailRequested) return []
+      return getDeepProbeTrailWaypoints(
         craft,
         trajectory,
         {
@@ -464,7 +487,8 @@ function SpacecraftMarker({
           trueScale,
         },
         trailQuality,
-      ),
+      )
+    },
     [
       craft,
       trajectory,
@@ -472,6 +496,7 @@ function SpacecraftMarker({
       inclinationScale,
       trueScale,
       trailQuality,
+      trailRequested,
     ],
   )
   const recentTrail = useMemo(
@@ -655,6 +680,16 @@ function SpacecraftMarker({
 
     scratchWorld.set(anchor[0] + local[0], anchor[1] + local[1], anchor[2] + local[2])
     const distance = camera.position.distanceTo(scratchWorld)
+    const nearCraft = selectDistanceDetailVisibility({
+      distance,
+      enterDistance: trueScale ? 0.12 : 5.5,
+      currentlyVisible: detailVisibleRef.current,
+      forced: selected,
+    })
+    if (nearCraft !== detailVisibleRef.current) {
+      detailVisibleRef.current = nearCraft
+      setDetailVisible(nearCraft)
+    }
 
     // A perspective-aware invisible target makes tiny true-scale craft easy
     // to pick at overview distance without enlarging their rendered markers.
@@ -662,10 +697,12 @@ function SpacecraftMarker({
       const worldPerPixel =
         (2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / size.height
       if (hitRef.current) {
+        hitRef.current.visible = nearCraft
         const targetWorldRadius = worldPerPixel * 18
         hitRef.current.scale.setScalar(Math.max(1, targetWorldRadius / sizes.hit))
       }
       if (locatorRef.current) {
+        locatorRef.current.visible = nearCraft
         const locatorSize = worldPerPixel * LOCATOR_PIXELS
         locatorRef.current.scale.set(locatorSize, locatorSize, 1)
       }
@@ -701,22 +738,10 @@ function SpacecraftMarker({
           ),
         )
         visualProxyRef.current.scale.setScalar(worldPerPixel * displayPixels)
-        visualProxyRef.current.visible = displayPixels >= 0.75
+        visualProxyRef.current.visible =
+          nearCraft && displayPixels >= 0.75
         visualProxyRef.current.rotation.y += delta * (selected ? 0.2 : 0.5)
       }
-    }
-
-    if (labelRef.current) {
-      const labelDistance = trueScale ? 0.06 : 15
-      const visible =
-        selected ||
-        sizes.labelAlways ||
-        (labelVisibleRef.current
-          ? distance < labelDistance * 1.08
-          : distance < labelDistance * 0.92)
-      labelVisibleRef.current = visible
-      labelRef.current.style.opacity = visible ? '1' : '0'
-      labelRef.current.style.pointerEvents = visible ? 'auto' : 'none'
     }
   })
 
@@ -822,6 +847,7 @@ function SpacecraftMarker({
           <group ref={localRef}>
           <mesh
             ref={hitRef}
+            visible={renderDetail}
             onClick={(event) => {
               event.stopPropagation()
               selectPlanet(craft.id)
@@ -892,10 +918,11 @@ function SpacecraftMarker({
             </sprite>
           ) : null}
 
-          {showLabels ? (
+          {showLabels && renderDetail ? (
             <Html
               center
               eps={0.25}
+              calculatePosition={calculateLabelPosition}
               zIndexRange={[12, 0]}
               style={{ pointerEvents: 'auto' }}
               position={[
@@ -907,7 +934,6 @@ function SpacecraftMarker({
               ]}
             >
               <div
-                ref={labelRef}
                 className={`planet-label craft-label ${selected ? 'planet-label-active' : ''}`}
                 role="button"
                 tabIndex={0}
@@ -922,7 +948,7 @@ function SpacecraftMarker({
                     selectPlanet(craft.id)
                   }
                 }}
-                style={{ transition: 'opacity 240ms ease', cursor: 'pointer' }}
+                style={{ cursor: 'pointer' }}
               >
                 <span className="craft-glyph">▴</span>
                 {englishOnly ? craft.englishName : craft.name}
@@ -974,6 +1000,8 @@ export function SpacecraftFleet() {
   const selectedEarthCraft = visibleEarthCraft.some(
     (craft) => craft.id === selectedPlanetId,
   )
+  const selectedEarthSystem =
+    selectedPlanetId === 'earth' || selectedEarthCraft
   const selectedArchiveCraft = SPACECRAFT.find(
     (craft) =>
       craft.id === selectedPlanetId &&
@@ -982,7 +1010,7 @@ export function SpacecraftFleet() {
   const mountedCraft = selectedArchiveCraft
     ? [...visibleCraft, selectedArchiveCraft]
     : visibleCraft
-  const showEarthDetail = selectedEarthCraft || earthDetailVisible
+  const showEarthDetail = selectedEarthSystem || earthDetailVisible
   const detailedCraft = mountedCraft.filter(
     (craft) =>
       showEarthDetail || !isEarthNeighborhoodCraft(craft.anchor),
@@ -1034,7 +1062,7 @@ export function SpacecraftFleet() {
     const next = selectEarthCraftDetailVisibility({
       projectedRadiusPixels,
       currentlyVisible: earthDetailRef.current,
-      selected: selectedEarthCraft,
+      selected: selectedEarthSystem,
     })
     if (next === earthDetailRef.current) return
     earthDetailRef.current = next

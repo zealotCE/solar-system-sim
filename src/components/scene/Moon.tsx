@@ -1,5 +1,5 @@
 import { Html } from '@react-three/drei'
-import { useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
@@ -13,6 +13,10 @@ import {
 } from '@/data/planets'
 import { useSimulation } from '@/hooks/useSimulation'
 import { MOON_ORBIT_MAX_SEGMENTS } from '@/lib/screenSpaceLod'
+import {
+  createStableHtmlPosition,
+  selectDistanceDetailVisibility,
+} from '@/lib/sceneLabels'
 import { useBodySurface } from '@/lib/textureAssets'
 import { OrbitLine } from './OrbitLine'
 
@@ -28,8 +32,8 @@ export function Moon({ moon, parent }: MoonProps) {
   const visualRef = useRef<THREE.Group>(null)
   const meshRef = useRef<THREE.Mesh>(null)
   const hitRef = useRef<THREE.Mesh>(null)
-  const labelRef = useRef<HTMLDivElement>(null)
-  const labelVisibleRef = useRef(false)
+  const detailVisibleRef = useRef(false)
+  const [detailVisible, setDetailVisible] = useState(false)
   const { size } = useThree()
   const {
     simTimeRef,
@@ -54,6 +58,10 @@ export function Moon({ moon, parent }: MoonProps) {
   const radius = getMoonVisualRadius(moon, trueScale)
   const parentRadius = getPlanetVisualRadius(parent, trueScale)
   const orbitLineRadius = getMoonLocalOrbitRadius(moon, parent, trueScale)
+  const calculateLabelPosition = useMemo(
+    () => createStableHtmlPosition(),
+    [],
+  )
   // Reveal distance for the label (and, in true scale, the pixel hit sphere):
   // roughly "the camera is inspecting this planet system".
   const labelDistance = trueScale
@@ -77,15 +85,15 @@ export function Moon({ moon, parent }: MoonProps) {
 
     groupRef.current.getWorldPosition(scratchWorld)
     const cameraDistance = camera.position.distanceTo(scratchWorld)
-    const nearSystem =
-      selected ||
-      (labelVisibleRef.current
-        ? cameraDistance < labelDistance * 1.08
-        : cameraDistance < labelDistance * 0.92)
-    labelVisibleRef.current = nearSystem
-
-    if (labelRef.current) {
-      labelRef.current.style.opacity = nearSystem ? '1' : '0'
+    const nearSystem = selectDistanceDetailVisibility({
+      distance: cameraDistance,
+      enterDistance: labelDistance,
+      currentlyVisible: detailVisibleRef.current,
+      forced: selected,
+    })
+    if (nearSystem !== detailVisibleRef.current) {
+      detailVisibleRef.current = nearSystem
+      setDetailVisible(nearSystem)
     }
 
     // True-scale moons are sub-pixel until the camera enters their system;
@@ -104,7 +112,7 @@ export function Moon({ moon, parent }: MoonProps) {
 
   return (
     <group>
-      {showOrbits ? (
+      {showOrbits && (selected || detailVisible) ? (
         <OrbitLine
           orbitRadius={orbitLineRadius}
           eccentricity={(moon.eccentricity ?? 0) * (trueScale ? 1 : eccentricityScale)}
@@ -116,7 +124,7 @@ export function Moon({ moon, parent }: MoonProps) {
         />
       ) : null}
 
-      <group ref={groupRef}>
+      <group ref={groupRef} visible={selected || detailVisible}>
         {trueScale ? (
           <mesh
             ref={hitRef}
@@ -170,18 +178,17 @@ export function Moon({ moon, parent }: MoonProps) {
             </mesh>
           ) : null}
         </group>
-        {showLabels ? (
+        {showLabels && (selected || detailVisible) ? (
           <Html
             center
             eps={0.25}
+            calculatePosition={calculateLabelPosition}
             zIndexRange={[12, 0]}
             style={{ pointerEvents: 'none' }}
             position={[0, trueScale ? radius * 2.2 : radius * planetScale + 0.16, 0]}
           >
             <div
-              ref={labelRef}
               className={`planet-label planet-label--minor ${selected ? 'planet-label-active' : ''}`}
-              style={{ transition: 'opacity 240ms ease' }}
             >
               <span className="planet-label-dot" style={{ backgroundColor: moon.color }} />
               {englishOnly ? moon.englishName : moon.name}

@@ -1,6 +1,6 @@
 import { Html } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 
 import {
@@ -11,6 +11,10 @@ import {
 import { useSimulation } from '@/hooks/useSimulation'
 import { getMinorBodyModel } from '@/lib/minorBodyModels'
 import { getCraftLocatorTexture } from '@/lib/planetTextures'
+import {
+  createStableHtmlPosition,
+  selectDistanceDetailVisibility,
+} from '@/lib/sceneLabels'
 import { CraftGlbModel } from './CraftGlbModel'
 
 const scratchPosition = new THREE.Vector3()
@@ -20,6 +24,8 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const hitRef = useRef<THREE.Mesh>(null)
   const locatorRef = useRef<THREE.Sprite>(null)
+  const detailVisibleRef = useRef(false)
+  const [detailVisible, setDetailVisible] = useState(false)
   const { size } = useThree()
   const {
     simTimeRef,
@@ -34,6 +40,10 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
   const officialModel = getMinorBodyModel(body.id)
   const selected = selectedPlanetId === body.id
   const radius = getMinorBodyVisualRadius(body, trueScale)
+  const calculateLabelPosition = useMemo(
+    () => createStableHtmlPosition(),
+    [],
+  )
 
   useFrame(({ camera }) => {
     const group = groupRef.current
@@ -56,10 +66,22 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
     const distance = camera.position.distanceTo(scratchPosition)
     const worldPerPixel =
       (2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / size.height
+    const nearBody = selectDistanceDetailVisibility({
+      distance,
+      enterDistance: trueScale ? 0.08 : 14,
+      currentlyVisible: detailVisibleRef.current,
+      forced: selected,
+    })
+    if (nearBody !== detailVisibleRef.current) {
+      detailVisibleRef.current = nearBody
+      setDetailVisible(nearBody)
+    }
     if (hitRef.current) {
+      hitRef.current.visible = nearBody
       hitRef.current.scale.setScalar(Math.max(radius * 1.3, worldPerPixel * 14))
     }
     if (locatorRef.current) {
+      locatorRef.current.visible = nearBody
       const markerSize = worldPerPixel * (selected ? 26 : 18)
       locatorRef.current.scale.set(markerSize, markerSize, 1)
     }
@@ -74,6 +96,7 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
     <group ref={groupRef}>
       <mesh
         ref={hitRef}
+        visible={selected || detailVisible}
         onClick={select}
         onPointerOver={() => {
           document.body.style.cursor = 'pointer'
@@ -125,7 +148,12 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
       ) : null}
 
       {trueScale ? (
-        <sprite ref={locatorRef} scale={[0, 0, 1]} renderOrder={20}>
+        <sprite
+          ref={locatorRef}
+          visible={selected || detailVisible}
+          scale={[0, 0, 1]}
+          renderOrder={20}
+        >
           <spriteMaterial
             map={locator}
             color={selected ? '#ffffff' : body.color}
@@ -138,10 +166,11 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
         </sprite>
       ) : null}
 
-      {showLabels ? (
+      {showLabels && (selected || detailVisible) ? (
         <Html
           center
           eps={0.25}
+          calculatePosition={calculateLabelPosition}
           zIndexRange={[12, 0]}
           style={{ pointerEvents: 'none' }}
           position={[0, trueScale ? 0 : radius + 0.28, 0]}

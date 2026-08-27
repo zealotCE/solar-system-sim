@@ -12,6 +12,7 @@ import {
   ARTIFICIAL_TRAIL_UPDATE_FRAMES,
   EARTH_CRAFT_DETAIL_ENTER_RADIUS_PX,
   EARTH_CRAFT_DETAIL_EXIT_RADIUS_PX,
+  LOCAL_ORBIT_MAX_ANIMATED_REVS_PER_SECOND,
   getLocalOrbitDisplayTime,
   getLocalOrbitRevolutionsPerSecond,
   isEarthNeighborhoodCraft,
@@ -79,15 +80,23 @@ assert(
 )
 const simTime = utcMsToSimTime(Date.UTC(2028, 4, 9))
 const orbitEpoch = utcMsToSimTime(Date.UTC(2028, 4, 8))
-assert.equal(
-  getLocalOrbitDisplayTime({
-    simTime,
-    orbitEpoch,
-    speed: 1,
-    orbitalPeriod: hubble.orbitalPeriod,
-    isPlaying: true,
-  }),
+const cappedDisplayTime = getLocalOrbitDisplayTime({
+  simTime,
   orbitEpoch,
+  speed: 1,
+  orbitalPeriod: hubble.orbitalPeriod,
+  isPlaying: true,
+})
+assert(
+  cappedDisplayTime > orbitEpoch && cappedDisplayTime < simTime,
+  'unresolved LEO motion must remain continuous instead of freezing',
+)
+assert(
+  Math.abs(
+    (cappedDisplayTime - orbitEpoch) / hubble.orbitalPeriod! -
+      LOCAL_ORBIT_MAX_ANIMATED_REVS_PER_SECOND,
+  ) < 1e-9,
+  'one real second at 1× must advance the capped visual phase by exactly its readable rate',
 )
 assert.equal(
   getLocalOrbitDisplayTime({
@@ -156,5 +165,6 @@ assert.equal(ARTIFICIAL_TRAIL_UPDATE_FRAMES, 8)
 console.log(
   `Earth-craft LOD validation passed: ${earthCraft.length} labels collapse at overview, ` +
     `${EARTH_CRAFT_DETAIL_EXIT_RADIUS_PX}/${EARTH_CRAFT_DETAIL_ENTER_RADIUS_PX}px hysteresis, ` +
-    `unresolved LEO motion freezes at a stable epoch, and trails update every ${ARTIFICIAL_TRAIL_UPDATE_FRAMES} frames.`,
+    `unresolved LEO motion remains continuous at ≤${LOCAL_ORBIT_MAX_ANIMATED_REVS_PER_SECOND} rev/s, ` +
+    `and trails update every ${ARTIFICIAL_TRAIL_UPDATE_FRAMES} frames.`,
 )

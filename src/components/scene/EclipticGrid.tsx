@@ -19,6 +19,7 @@ import {
   type EclipticDeviationPath,
   type EclipticDeviationPoint,
 } from '@/lib/eclipticDeviation'
+import { createStableHtmlPosition } from '@/lib/sceneLabels'
 
 type DeviationOrbitPath = EclipticDeviationPath & {
   anchor: EclipticDeviationPoint
@@ -88,6 +89,10 @@ export function EclipticGrid() {
     showAsteroids,
   } = useSimulation()
   const radius = (trueScale ? 106 : 78) * orbitScale
+  const calculateLabelPosition = useMemo(
+    () => createStableHtmlPosition(),
+    [],
+  )
 
   const deviationPaths = useMemo<DeviationOrbitPath[]>(() => {
     const modifiers = {
@@ -213,6 +218,7 @@ export function EclipticGrid() {
       ))}
       <Html
         center
+        calculatePosition={calculateLabelPosition}
         position={[0, 0.2, -radius * 0.94]}
         zIndexRange={[12, 0]}
         style={{ pointerEvents: 'none' }}

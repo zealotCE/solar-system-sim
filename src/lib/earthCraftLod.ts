@@ -1,6 +1,6 @@
 export const EARTH_CRAFT_DETAIL_ENTER_RADIUS_PX = 32
 export const EARTH_CRAFT_DETAIL_EXIT_RADIUS_PX = 22
-export const LOCAL_ORBIT_MAX_ANIMATED_REVS_PER_SECOND = 0.35
+export const LOCAL_ORBIT_MAX_ANIMATED_REVS_PER_SECOND = 0.16
 export const ARTIFICIAL_TRAIL_UPDATE_FRAMES = 8
 
 export function isEarthNeighborhoodCraft(
@@ -45,9 +45,10 @@ export function getLocalOrbitRevolutionsPerSecond(
 }
 
 /**
- * Fast LEO periods alias badly at the default one-day-per-second rate. Keep a
- * representative phase fixed at the orbit epoch until playback is slow enough
- * to resolve the motion; paused views always use the exact model time.
+ * Fast LEO periods alias badly at the default one-day-per-second rate. Preserve
+ * continuous motion but compress unresolved angular velocity to a readable
+ * maximum (about one revolution per 6.25 seconds). Paused views use exact
+ * model time, and the 0.01× rate remains below this cap.
  */
 export function getLocalOrbitDisplayTime({
   simTime,
@@ -63,8 +64,15 @@ export function getLocalOrbitDisplayTime({
   isPlaying: boolean
 }): number {
   if (!isPlaying) return simTime
-  return getLocalOrbitRevolutionsPerSecond(speed, orbitalPeriod) <=
-    LOCAL_ORBIT_MAX_ANIMATED_REVS_PER_SECOND
-    ? simTime
-    : orbitEpoch
+  const revolutionsPerSecond = getLocalOrbitRevolutionsPerSecond(
+    speed,
+    orbitalPeriod,
+  )
+  if (!Number.isFinite(revolutionsPerSecond)) return simTime
+  if (revolutionsPerSecond <= LOCAL_ORBIT_MAX_ANIMATED_REVS_PER_SECOND) {
+    return simTime
+  }
+  const timeCompression =
+    LOCAL_ORBIT_MAX_ANIMATED_REVS_PER_SECOND / revolutionsPerSecond
+  return orbitEpoch + (simTime - orbitEpoch) * timeCompression
 }

@@ -1,10 +1,11 @@
 import { Html } from '@react-three/drei'
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
 import { getPlanetPosition, getPlanetVisualRadius, type PlanetData } from '@/data/planets'
 import { useSimulation } from '@/hooks/useSimulation'
+import { createStableHtmlPosition } from '@/lib/sceneLabels'
 import { EARTH_CLOUDS_URL, useBodySurface, useFileTexture } from '@/lib/textureAssets'
 import { Moon } from './Moon'
 import { PlanetRings } from './PlanetRings'
@@ -45,6 +46,10 @@ export function Planet({ planet }: PlanetProps) {
   )
   const selected = selectedPlanetId === planet.id
   const radius = getPlanetVisualRadius(planet, trueScale)
+  const calculateLabelPosition = useMemo(
+    () => createStableHtmlPosition(),
+    [],
+  )
 
   useFrame(({ camera }) => {
     if (!groupRef.current || !meshRef.current || !visualRef.current) return
@@ -69,7 +74,9 @@ export function Planet({ planet }: PlanetProps) {
       const distance = camera.position.distanceTo(groupRef.current.position)
       const worldPerPixel =
         (2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / size.height
-      hitRef.current.scale.setScalar(Math.max(radius * 1.2, worldPerPixel * 13))
+      hitRef.current.scale.setScalar(
+        Math.max(radius * planetScale * 1.2, worldPerPixel * 13),
+      )
     }
   })
 
@@ -80,24 +87,22 @@ export function Planet({ planet }: PlanetProps) {
 
   return (
     <group ref={groupRef}>
-      {trueScale ? (
-        <mesh
-          ref={hitRef}
-          onClick={(event) => {
-            event.stopPropagation()
-            selectPlanet(planet.id)
-          }}
-          onPointerOver={() => {
-            document.body.style.cursor = 'pointer'
-          }}
-          onPointerOut={() => {
-            document.body.style.cursor = 'auto'
-          }}
-        >
-          <sphereGeometry args={[1, 10, 10]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-        </mesh>
-      ) : null}
+      <mesh
+        ref={hitRef}
+        onClick={(event) => {
+          event.stopPropagation()
+          selectPlanet(planet.id)
+        }}
+        onPointerOver={() => {
+          document.body.style.cursor = 'pointer'
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = 'auto'
+        }}
+      >
+        <sphereGeometry args={[1, 10, 10]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
       <group ref={visualRef} rotation={[0, 0, planet.axialTilt]}>
         <mesh
           ref={meshRef}
@@ -189,6 +194,7 @@ export function Planet({ planet }: PlanetProps) {
         <Html
           center
           eps={0.25}
+          calculatePosition={calculateLabelPosition}
           zIndexRange={[12, 0]}
           style={{ pointerEvents: 'none' }}
           position={[0, trueScale ? radius * 2.4 : radius * planetScale + 0.58, 0]}

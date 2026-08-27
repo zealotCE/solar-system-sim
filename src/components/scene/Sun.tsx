@@ -5,6 +5,7 @@ import * as THREE from 'three'
 
 import { SUN, getSunVisualRadius } from '@/data/planets'
 import { getGlowTexture } from '@/lib/planetTextures'
+import { createStableHtmlPosition } from '@/lib/sceneLabels'
 import { useBodySurface } from '@/lib/textureAssets'
 import { useSimulation } from '@/hooks/useSimulation'
 import { isVisualTestMode, markVisualTestFrameReady } from '@/lib/visualTest'
@@ -30,6 +31,10 @@ export function Sun() {
   const glow = useMemo(() => getGlowTexture(), [])
   const radius = getSunVisualRadius(trueScale)
   const freezeAnimation = isVisualTestMode()
+  const calculateLabelPosition = useMemo(
+    () => createStableHtmlPosition(),
+    [],
+  )
 
   useFrame(({ clock, camera }) => {
     if (!coreRef.current || !visualRef.current) return
@@ -172,6 +177,7 @@ export function Sun() {
       {showLabels ? (
         <Html
           center
+          calculatePosition={calculateLabelPosition}
           zIndexRange={[12, 0]}
           style={{ pointerEvents: 'none' }}
           position={[0, trueScale ? radius * 2.6 : radius * planetScale + 1, 0]}

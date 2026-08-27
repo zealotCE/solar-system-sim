@@ -1,7 +1,7 @@
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Bloom, EffectComposer } from '@react-three/postprocessing'
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import * as THREE from 'three'
 
@@ -28,7 +28,7 @@ import {
   getCraftFocusRadius,
   getDeepProbeTrailLodGuide,
   getSpacecraftById,
-  getSpacecraftPosition,
+  getSpacecraftPlacement,
   isCraftTrailOnlyArchiveVisible,
 } from '@/data/spacecraft'
 import { useScreenSpaceLod } from '@/hooks/useScreenSpaceLod'
@@ -36,6 +36,11 @@ import { useSimulation } from '@/hooks/useSimulation'
 import { useTrajectory } from '@/hooks/useTrajectory'
 import { getLocalOrbitDisplayTime } from '@/lib/earthCraftLod'
 import {
+  getScenePixelRatio,
+  selectWideOverviewQuality,
+} from '@/lib/scenePerformance'
+import {
+  SCREEN_SPACE_LOD_EVALUATION_FRAMES,
   getClosedOrbitSegmentTiers,
   getClosedOrbitTransitionThresholds,
   getMinorBodyOrbitMaxSegments,
@@ -43,6 +48,7 @@ import {
   getPolylineBoundingRadius,
 } from '@/lib/screenSpaceLod'
 import { SIM_TIME_MAX_YEARS, SIM_TIME_MIN_YEARS } from '@/lib/utils'
+import { isVisualTestMode } from '@/lib/visualTest'
 import { AsteroidBelt } from './AsteroidBelt'
 import { EclipticGrid } from './EclipticGrid'
 import { MinorBody } from './MinorBody'
@@ -141,14 +147,19 @@ function CameraRig() {
   const followTarget = useRef(new THREE.Vector3())
   const focusAnim = useRef({ nonce: 0, active: false })
   const offsetDir = useRef(new THREE.Vector3())
+  const desiredOffsetDir = useRef(new THREE.Vector3())
   const trackedPosition = useRef(new THREE.Vector3())
   const followDelta = useRef(new THREE.Vector3())
+  const currentLocalDirection = useRef(new THREE.Vector3())
+  const trackedLocalDirection = useRef(new THREE.Vector3())
+  const localFollowRotation = useRef(new THREE.Quaternion())
   const trackedTargetKey = useRef<string | null>(null)
   const pendingTrajectoryTarget = useRef<string | null>(null)
 
   useFrame((_, delta) => {
     const controls = controlsRef.current
     if (!controls) return
+    let hasLocalFollowDirection = false
 
     if (cameraResetNonce !== lastReset.current) {
       lastReset.current = cameraResetNonce
@@ -202,7 +213,7 @@ function CameraRig() {
                   isPlaying,
                 })
               : simTimeRef.current
-          const position = getSpacecraftPosition(
+          const placement = getSpacecraftPlacement(
             craft,
             simTimeRef.current,
             selectedTrajectorySamples,
@@ -215,13 +226,24 @@ function CameraRig() {
             },
             localDisplayTime,
           )
-          if (!position) {
+          if (!placement) {
             pendingTrajectoryTarget.current = craft.id
             trackedTargetKey.current = null
             return
           }
-          const [x, y, z] = position
-          followTarget.current.set(x, y, z)
+          const { anchor, local } = placement
+          followTarget.current.set(
+            anchor[0] + local[0],
+            anchor[1] + local[1],
+            anchor[2] + local[2],
+          )
+          if (!craft.trajectoryId) {
+            currentLocalDirection.current.set(...local)
+            if (currentLocalDirection.current.lengthSq() > 1e-16) {
+              currentLocalDirection.current.normalize()
+              hasLocalFollowDirection = true
+            }
+          }
         } else {
           const minorBody = getMinorBodyById(selectedPlanetId)
           if (minorBody) {
@@ -257,12 +279,34 @@ function CameraRig() {
         pendingTrajectoryTarget.current = null
       }
       if (trackedTargetKey.current === targetKey) {
-        followDelta.current.copy(followTarget.current).sub(trackedPosition.current)
-        camera.position.add(followDelta.current)
+        if (
+          hasLocalFollowDirection &&
+          trackedLocalDirection.current.lengthSq() > 0.5
+        ) {
+          localFollowRotation.current.setFromUnitVectors(
+            trackedLocalDirection.current,
+            currentLocalDirection.current,
+          )
+          followDelta.current
+            .copy(camera.position)
+            .sub(trackedPosition.current)
+            .applyQuaternion(localFollowRotation.current)
+          camera.position.copy(followTarget.current).add(followDelta.current)
+        } else {
+          followDelta.current
+            .copy(followTarget.current)
+            .sub(trackedPosition.current)
+          camera.position.add(followDelta.current)
+        }
       } else {
         trackedTargetKey.current = targetKey
       }
       trackedPosition.current.copy(followTarget.current)
+      if (hasLocalFollowDirection) {
+        trackedLocalDirection.current.copy(currentLocalDirection.current)
+      } else {
+        trackedLocalDirection.current.set(0, 0, 0)
+      }
       controls.target.copy(followTarget.current)
 
       // Star Walk-style fly-in: shortly after selecting a body, glide the camera
@@ -291,20 +335,35 @@ function CameraRig() {
         offsetDir.current.copy(camera.position).sub(controls.target)
         const currentDistance = offsetDir.current.length()
         const cameraDamping = 1 - Math.exp(-9 * delta)
+        if (hasLocalFollowDirection && currentDistance > 1e-12) {
+          desiredOffsetDir.current
+            .copy(currentLocalDirection.current)
+            .multiplyScalar(currentDistance)
+          offsetDir.current.lerp(
+            desiredOffsetDir.current,
+            1 - Math.exp(-5 * delta),
+          )
+        }
         const nextDistance = THREE.MathUtils.lerp(
           currentDistance,
           desiredDistance,
           cameraDamping,
         )
+        const localAlignment = hasLocalFollowDirection
+          ? offsetDir.current.dot(currentLocalDirection.current) /
+            Math.max(offsetDir.current.length(), 1e-12)
+          : 1
         offsetDir.current.normalize().multiplyScalar(nextDistance)
         camera.position.copy(controls.target).add(offsetDir.current)
         if (
           Math.abs(nextDistance - desiredDistance) <=
-          Math.max(desiredDistance * 0.012, 1e-7)
+            Math.max(desiredDistance * 0.012, 1e-7) &&
+          localAlignment >= 0.985
         ) {
           focusAnim.current.active = false
         }
       }
+      controls.update()
     } else {
       trackedTargetKey.current = null
       pendingTrajectoryTarget.current = null
@@ -494,8 +553,62 @@ function MinorBodyOrbit({ body }: { body: MinorBodyData }) {
 }
 
 function SceneContent() {
-  const { showOrbits, showAsteroids, showEcliptic, showSpacecraft, bloomStrength, trueScale } =
-    useSimulation()
+  const {
+    showOrbits,
+    showAsteroids,
+    showEcliptic,
+    showSpacecraft,
+    bloomStrength,
+    trueScale,
+    selectedPlanetId,
+  } = useSimulation()
+  const { setDpr } = useThree()
+  const overviewFrameRef = useRef(0)
+  const wideOverviewRef = useRef(false)
+  const viewDirectionRef = useRef(new THREE.Vector3())
+  const rayClosestRef = useRef(new THREE.Vector3())
+  const [wideOverview, setWideOverview] = useState(false)
+  const lockVisualTestQuality = isVisualTestMode()
+  const visibleMinorBodyOrbits = wideOverview
+    ? MINOR_BODIES.filter((body) => body.id === selectedPlanetId)
+    : MINOR_BODIES
+
+  useFrame(({ camera }) => {
+    if (lockVisualTestQuality) return
+    overviewFrameRef.current += 1
+    if (
+      overviewFrameRef.current % SCREEN_SPACE_LOD_EVALUATION_FRAMES !==
+      0
+    ) {
+      return
+    }
+    camera.getWorldDirection(viewDirectionRef.current)
+    const distanceAlongRay = -camera.position.dot(viewDirectionRef.current)
+    const centerRayDistance =
+      distanceAlongRay > 0
+        ? rayClosestRef.current
+            .copy(camera.position)
+            .addScaledVector(viewDirectionRef.current, distanceAlongRay)
+            .length()
+        : Number.POSITIVE_INFINITY
+    const next = selectWideOverviewQuality({
+      cameraDistance: camera.position.length(),
+      centerRayDistance,
+      currentlyWide: wideOverviewRef.current,
+    })
+    if (next === wideOverviewRef.current) return
+    wideOverviewRef.current = next
+    setWideOverview(next)
+  })
+
+  useEffect(() => {
+    setDpr(
+      getScenePixelRatio(
+        typeof window === 'undefined' ? 1 : window.devicePixelRatio,
+        wideOverview,
+      ),
+    )
+  }, [setDpr, wideOverview])
 
   return (
     <>
@@ -514,7 +627,9 @@ function SceneContent() {
       {showEcliptic ? <EclipticGrid /> : null}
       {showOrbits ? PLANETS.map((planet) => <PlanetOrbit key={`${planet.id}-orbit`} planet={planet} />) : null}
       {showAsteroids && showOrbits
-        ? MINOR_BODIES.map((body) => <MinorBodyOrbit key={`${body.id}-orbit`} body={body} />)
+        ? visibleMinorBodyOrbits.map((body) => (
+            <MinorBodyOrbit key={`${body.id}-orbit`} body={body} />
+          ))
         : null}
       {PLANETS.map((planet) => (
         <Planet key={planet.id} planet={planet} />
@@ -524,9 +639,12 @@ function SceneContent() {
       {showAsteroids ? <AsteroidBelt /> : null}
       {/* Screen-space vignette lives in CSS; the postprocessing one produced a
           visible circular veil over the scene at wide zoom levels. */}
-      <EffectComposer multisampling={4} enableNormalPass={false}>
+      <EffectComposer
+        multisampling={wideOverview ? 0 : 4}
+        enableNormalPass={false}
+      >
         <Bloom
-          intensity={bloomStrength}
+          intensity={wideOverview ? bloomStrength * 0.55 : bloomStrength}
           luminanceThreshold={0.82}
           luminanceSmoothing={0.22}
           mipmapBlur
