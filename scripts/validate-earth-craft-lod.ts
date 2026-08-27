@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   SPACECRAFT,
   getEarthCraftDetailReferenceRadius,
+  getCraftPhysicalSpan,
   getSimplifiedCraftLocalPosition,
   getSimplifiedCraftOrbitTrailPoints,
   getSpacecraftAnchorPosition,
@@ -22,10 +23,19 @@ import {
   SELECTED_MARKER_MAX_PIXELS,
   SELECTED_MODEL_MAX_PIXELS,
   SELECTED_MODEL_MIN_PIXELS,
+  PHYSICAL_MODEL_PROXY_HIDE_PIXELS,
+  PHYSICAL_MODEL_PROXY_SHOW_PIXELS,
   TRUE_SCALE_IDENTIFICATION_REFERENCE_RATIO,
   UNSELECTED_MARKER_MAX_PIXELS,
   getCraftIdentificationPixels,
+  selectCraftIdentificationProxyVisibility,
 } from '../src/lib/spacecraftPresentation.ts'
+import {
+  TRUE_SCALE_CAMERA_NEAR,
+  TRUE_SCALE_REBASE_STEPS_PER_YEAR,
+  getPrecisionRebaseEpoch,
+  getTrueScaleCraftMinDistance,
+} from '../src/lib/scenePrecision.ts'
 import { utcMsToSimTime } from '../src/lib/utils.ts'
 
 const earthCraft = SPACECRAFT.filter((craft) =>
@@ -202,6 +212,47 @@ assert.equal(
 )
 assert(TRUE_SCALE_IDENTIFICATION_REFERENCE_RATIO < 0.2)
 assert(SELECTED_MODEL_MAX_PIXELS < 48)
+assert.equal(
+  selectCraftIdentificationProxyVisibility({
+    physicalPixels: PHYSICAL_MODEL_PROXY_HIDE_PIXELS - 0.01,
+    currentlyVisible: true,
+  }),
+  true,
+)
+assert.equal(
+  selectCraftIdentificationProxyVisibility({
+    physicalPixels: PHYSICAL_MODEL_PROXY_HIDE_PIXELS,
+    currentlyVisible: true,
+  }),
+  false,
+)
+assert.equal(
+  selectCraftIdentificationProxyVisibility({
+    physicalPixels: PHYSICAL_MODEL_PROXY_SHOW_PIXELS,
+    currentlyVisible: false,
+  }),
+  false,
+)
+assert.equal(
+  selectCraftIdentificationProxyVisibility({
+    physicalPixels: PHYSICAL_MODEL_PROXY_SHOW_PIXELS - 0.01,
+    currentlyVisible: false,
+  }),
+  true,
+)
+const voyager2 = SPACECRAFT.find((craft) => craft.id === 'voyager2')!
+const voyagerPhysicalSpan = getCraftPhysicalSpan(voyager2)
+const voyagerMinDistance =
+  getTrueScaleCraftMinDistance(voyagerPhysicalSpan)
+assert(voyagerMinDistance > voyagerPhysicalSpan / 2)
+assert(voyagerMinDistance < 0.00004)
+assert(TRUE_SCALE_CAMERA_NEAR < voyagerMinDistance / 10)
+const precisionEpoch = getPrecisionRebaseEpoch(simTime, orbitEpoch, true)
+assert(
+  Math.abs(precisionEpoch - simTime) <=
+    0.5 / TRUE_SCALE_REBASE_STEPS_PER_YEAR,
+)
+assert.equal(getPrecisionRebaseEpoch(simTime, orbitEpoch, false), orbitEpoch)
 assert.equal(ARTIFICIAL_TRAIL_UPDATE_FRAMES, 8)
 
 console.log(
@@ -209,5 +260,6 @@ console.log(
     `${EARTH_CRAFT_DETAIL_EXIT_RADIUS_PX}/${EARTH_CRAFT_DETAIL_ENTER_RADIUS_PX}px hysteresis, ` +
     `unresolved LEO motion remains continuous at ≤${LOCAL_ORBIT_MAX_ANIMATED_REVS_PER_SECOND} rev/s, ` +
     `selected identification models stay within ${SELECTED_MODEL_MIN_PIXELS}–${SELECTED_MODEL_MAX_PIXELS}px, ` +
+    `physical close-up takes over at ${PHYSICAL_MODEL_PROXY_SHOW_PIXELS}–${PHYSICAL_MODEL_PROXY_HIDE_PIXELS}px, ` +
     `and trails update every ${ARTIFICIAL_TRAIL_UPDATE_FRAMES} frames.`,
 )

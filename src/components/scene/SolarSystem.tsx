@@ -26,6 +26,7 @@ import {
 } from '@/data/minorBodies'
 import {
   getCraftFocusRadius,
+  getCraftPhysicalSpan,
   getDeepProbeTrailLodGuide,
   getSpacecraftById,
   getSpacecraftPlacement,
@@ -47,6 +48,12 @@ import {
   getPlanetOrbitMaxSegments,
   getPolylineBoundingRadius,
 } from '@/lib/screenSpaceLod'
+import {
+  TRUE_SCALE_CAMERA_MIN_DISTANCE,
+  TRUE_SCALE_CAMERA_NEAR,
+  getPrecisionRebaseEpoch,
+  getTrueScaleCraftMinDistance,
+} from '@/lib/scenePrecision'
 import { SIM_TIME_MAX_YEARS, SIM_TIME_MIN_YEARS } from '@/lib/utils'
 import { isVisualTestMode } from '@/lib/visualTest'
 import { AsteroidBelt } from './AsteroidBelt'
@@ -329,7 +336,7 @@ function CameraRig() {
           : trueScale
             ? THREE.MathUtils.clamp(
                 radius * (focusingCraft ? 3 : 4.5),
-                Math.max(radius * 1.5, 0.00004),
+                Math.max(radius * 1.5, TRUE_SCALE_CAMERA_MIN_DISTANCE),
                 90,
               )
             : THREE.MathUtils.clamp(radius * 4.2 + 0.35, 0.9, 24)
@@ -369,6 +376,15 @@ function CameraRig() {
       trackedTargetKey.current = null
       pendingTrajectoryTarget.current = null
     }
+    if (isVisualTestMode()) {
+      document.documentElement.dataset.visualTestCameraDistance = String(
+        camera.position.distanceTo(controls.target),
+      )
+      document.documentElement.dataset.visualTestCameraMinDistance = String(
+        controls.minDistance,
+      )
+      document.documentElement.dataset.visualTestCameraNear = String(camera.near)
+    }
   })
 
   // Zoom floor adapts to the focused body so a true-scale Earth (radius
@@ -376,8 +392,10 @@ function CameraRig() {
   const focusRadius =
     followPlanet && selectedPlanetId ? getVisualRadius(selectedPlanetId, trueScale) : null
   const minDistance = trueScale
-    ? focusRadius
-      ? Math.max(focusRadius * 1.35, 0.00004)
+    ? followPlanet && selectedCraft
+      ? getTrueScaleCraftMinDistance(getCraftPhysicalSpan(selectedCraft))
+      : focusRadius
+      ? Math.max(focusRadius * 1.35, TRUE_SCALE_CAMERA_MIN_DISTANCE)
       : 0.03
     : 1.1
 
@@ -388,6 +406,7 @@ function CameraRig() {
       dampingFactor={0.08}
       minDistance={minDistance}
       maxDistance={trueScale ? 900 : 210}
+      zoomSpeed={trueScale ? 4 : 1}
       enablePan={false}
       autoRotate={autoRotate && !followPlanet}
       autoRotateSpeed={0.22}
@@ -413,9 +432,15 @@ function PlanetOrbit({ planet }: { planet: PlanetData }) {
     inclinationScale,
     trueScale,
     selectedPlanetId,
+    simTime,
     orbitEpoch,
   } = useSimulation()
   const selected = selectedPlanetId === planet.id
+  const rebaseEpoch = getPrecisionRebaseEpoch(
+    simTime,
+    orbitEpoch,
+    selected && trueScale,
+  )
   const lodGuide = useMemo(
     () =>
       getPlanetOrbitPoints(
@@ -462,7 +487,7 @@ function PlanetOrbit({ planet }: { planet: PlanetData }) {
         inclinationScale,
         trueScale,
       }
-      const anchor = getPlanetPosition(planet, orbitEpoch, modifiers)
+      const anchor = getPlanetPosition(planet, rebaseEpoch, modifiers)
       const points = getPlanetOrbitPoints(
         planet,
         modifiers,
@@ -481,6 +506,7 @@ function PlanetOrbit({ planet }: { planet: PlanetData }) {
       inclinationScale,
       trueScale,
       orbitEpoch,
+      rebaseEpoch,
       segments,
     ],
   )
@@ -497,8 +523,19 @@ function PlanetOrbit({ planet }: { planet: PlanetData }) {
 }
 
 function MinorBodyOrbit({ body }: { body: MinorBodyData }) {
-  const { orbitScale, trueScale, selectedPlanetId, orbitEpoch } = useSimulation()
+  const {
+    orbitScale,
+    trueScale,
+    selectedPlanetId,
+    simTime,
+    orbitEpoch,
+  } = useSimulation()
   const selected = selectedPlanetId === body.id
+  const rebaseEpoch = getPrecisionRebaseEpoch(
+    simTime,
+    orbitEpoch,
+    selected && trueScale,
+  )
   const lodGuide = useMemo(
     () => getMinorBodyOrbitPoints(body, trueScale, orbitScale, 64),
     [body, orbitScale, trueScale],
@@ -527,7 +564,12 @@ function MinorBodyOrbit({ body }: { body: MinorBodyData }) {
   const segments = segmentTiers[tierIndex]
   const orbit = useMemo(
     () => {
-      const anchor = getMinorBodyScenePosition(body, orbitEpoch, trueScale, orbitScale)
+      const anchor = getMinorBodyScenePosition(
+        body,
+        rebaseEpoch,
+        trueScale,
+        orbitScale,
+      )
       const points = getMinorBodyOrbitPoints(
         body,
         trueScale,
@@ -539,7 +581,7 @@ function MinorBodyOrbit({ body }: { body: MinorBodyData }) {
       )
       return { anchor, points }
     },
-    [body, orbitScale, trueScale, orbitEpoch, segments],
+    [body, orbitScale, trueScale, rebaseEpoch, segments],
   )
   return (
     <group position={orbit.anchor}>
@@ -618,7 +660,7 @@ function SceneContent() {
         makeDefault
         position={[DEFAULT_CAMERA.x, DEFAULT_CAMERA.y, DEFAULT_CAMERA.z]}
         fov={45}
-        near={trueScale ? 0.00001 : 0.1}
+        near={trueScale ? TRUE_SCALE_CAMERA_NEAR : 0.1}
         far={trueScale ? 1600 : 900}
       />
       <CameraRig />

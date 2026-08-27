@@ -965,6 +965,23 @@ button,
   background: linear-gradient(90deg, rgba(8, 30, 42, 0.78), rgba(6, 13, 24, 0.72));
 }
 
+.craft-label--anchored {
+  position: relative;
+  transform: translateY(calc(-1 * var(--craft-label-offset, 29px)));
+}
+
+.craft-label--anchored::before {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 1px;
+  height: 17px;
+  content: '';
+  background: linear-gradient(rgba(103, 232, 249, 0.42), transparent);
+  opacity: var(--craft-label-leader-opacity, 1);
+  pointer-events: none;
+}
+
 .craft-glyph {
   font-size: 7px;
   color: rgba(103, 232, 249, 0.8);

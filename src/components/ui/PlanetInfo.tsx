@@ -782,8 +782,8 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
       {craft && trueScale ? (
         <p className="rounded-xl border border-cyan-200/10 bg-cyan-300/[0.035] px-3 py-2 text-[10px] leading-relaxed text-cyan-100/65">
           {pureChinese
-            ? `真实比例：物理实体最长展开跨度约 ${craft.maxSpanM} m；选中时另叠加 28–44 px 的半透明非物理识别模型，未选中目标仅显示固定尺寸准心。`
-            : `TRUE SCALE · physical span ≈ ${craft.maxSpanM} m. Selection adds a translucent 28–44 px non-physical identification model; unselected targets use fixed-size reticles only.`}
+            ? `真实比例：物理实体最长展开跨度约 ${craft.maxSpanM} m；远距时由 28–44 px 非物理识别模型定位，继续向内缩放后识别层会自动隐藏并显示真实物理模型。`
+            : `TRUE SCALE · physical span ≈ ${craft.maxSpanM} m. A 28–44 px non-physical locator is used at distance, then retires automatically as the physical model becomes inspectable.`}
         </p>
       ) : null}
 

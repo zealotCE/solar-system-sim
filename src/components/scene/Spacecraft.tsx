@@ -58,7 +58,9 @@ import {
 import {
   TRUE_SCALE_IDENTIFICATION_REFERENCE_RATIO,
   getCraftIdentificationPixels,
+  selectCraftIdentificationProxyVisibility,
 } from '@/lib/spacecraftPresentation'
+import { getPrecisionRebaseEpoch } from '@/lib/scenePrecision'
 import { getCraftModel } from '@/lib/spacecraftModels'
 import {
   ACTUAL_TRAJECTORY_GRADIENT_START,
@@ -394,6 +396,7 @@ function SpacecraftMarker({
   const hitRef = useRef<THREE.Mesh>(null)
   const locatorRef = useRef<THREE.Sprite>(null)
   const trailCursorRef = useRef<THREE.Group>(null)
+  const labelRef = useRef<HTMLDivElement>(null)
   const detailVisibleRef = useRef(false)
   const [detailVisible, setDetailVisible] = useState(false)
   const { size } = useThree()
@@ -433,6 +436,11 @@ function SpacecraftMarker({
     load: selected || showAllLabels,
   })
   const trajectory = trajectorySnapshot?.samples ?? null
+  const trailRebaseEpoch = getPrecisionRebaseEpoch(
+    simTime,
+    orbitEpoch,
+    selected && trueScale,
+  )
   const baseSizes = MARKER_SIZES[craft.kind]
   const physicalSpan = getCraftPhysicalSpan(craft)
   const physicalRadius = physicalSpan / 2
@@ -550,7 +558,7 @@ function SpacecraftMarker({
   const trail = useMemo(() => {
     const waypoints = displayedTrail
     if (!waypoints.length) return null
-    const placement = getSpacecraftPlacement(craft, orbitEpoch, trajectory, {
+    const placement = getSpacecraftPlacement(craft, trailRebaseEpoch, trajectory, {
       orbitScale,
       eccentricityScale,
       inclinationScale,
@@ -615,7 +623,7 @@ function SpacecraftMarker({
   }, [
     craft,
     displayedTrail,
-    orbitEpoch,
+    trailRebaseEpoch,
     orbitScale,
     eccentricityScale,
     inclinationScale,
@@ -758,10 +766,30 @@ function SpacecraftMarker({
           selected,
           hasModel: Boolean(model),
         })
+        const physicalPixels = physicalSpan / worldPerPixel
+        const showIdentificationProxy =
+          nearCraft &&
+          displayPixels >= 0.75 &&
+          selectCraftIdentificationProxyVisibility({
+            physicalPixels,
+            currentlyVisible: visualProxyRef.current.visible,
+          })
         visualProxyRef.current.scale.setScalar(worldPerPixel * displayPixels)
-        visualProxyRef.current.visible =
-          nearCraft && displayPixels >= 0.75
+        visualProxyRef.current.visible = showIdentificationProxy
         visualProxyRef.current.rotation.y += delta * (selected ? 0.08 : 0.5)
+        if (labelRef.current && trueScale) {
+          const labelOffset = showIdentificationProxy
+            ? 29
+            : THREE.MathUtils.clamp(physicalPixels * 0.18 + 24, 44, 140)
+          labelRef.current.style.setProperty(
+            '--craft-label-offset',
+            `${labelOffset}px`,
+          )
+          labelRef.current.style.setProperty(
+            '--craft-label-leader-opacity',
+            showIdentificationProxy ? '1' : '0',
+          )
+        }
       }
     }
   })
@@ -968,14 +996,13 @@ function SpacecraftMarker({
               style={{ pointerEvents: renderDetail ? 'auto' : 'none' }}
               position={[
                 0,
-                trueScale
-                  ? getCraftFocusRadius(craft, trueScale) * 1.6
-                  : sizes.mesh + 0.34,
+                trueScale ? 0 : sizes.mesh + 0.34,
                 0,
               ]}
             >
               <div
-                className={`planet-label craft-label ${selected ? 'planet-label-active' : ''}`}
+                ref={labelRef}
+                className={`planet-label craft-label ${trueScale ? 'craft-label--anchored' : ''} ${selected ? 'planet-label-active' : ''}`}
                 data-craft-id={craft.id}
                 role={renderDetail ? 'button' : undefined}
                 tabIndex={renderDetail ? 0 : undefined}

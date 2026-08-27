@@ -183,8 +183,8 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
             <span className="mt-0.5 block text-[10px] leading-relaxed text-slate-500">
               {trueScale
                 ? text(
-                    '严格同比例：实体与轨道共用同一 km 比例尺；选中航天器另叠加 28–44 px 半透明识别模型，未选中目标仅用固定尺寸准心',
-                    'Strict physical scale for entities and orbits; selected spacecraft add a translucent 28–44 px identification model, while unselected targets use fixed-size reticles.',
+                    '严格同比例：实体与轨道共用同一 km 比例尺；远距航天器以 28–44 px 识别模型定位，继续放大后自动交还真实物理模型',
+                    'Strict physical scale for entities and orbits; a 28–44 px locator identifies distant craft, then hands off to the physical model as you zoom closer.',
                   )
                 : text(
                     '当前为艺术化比例：外侧轨道压缩、天体放大；航天器以固定屏幕尺寸准心识别，不叠加大面积辉光',
