@@ -4,19 +4,12 @@ import * as THREE from 'three'
 
 import { useSimulation } from '@/hooks/useSimulation'
 import { MILKY_WAY_URL, useFileTexture } from '@/lib/textureAssets'
-
-function randomGenerator(seed: number) {
-  let state = seed >>> 0
-  return () => {
-    state = (state * 1664525 + 1013904223) >>> 0
-    return state / 4294967296
-  }
-}
+import { createSeededRandom, isVisualTestMode } from '@/lib/visualTest'
 
 function createStarShell(count: number, seed: number, inner: number, outer: number) {
   const positions = new Float32Array(count * 3)
   const colors = new Float32Array(count * 3)
-  const random = randomGenerator(seed)
+  const random = createSeededRandom(seed)
   const color = new THREE.Color()
 
   for (let i = 0; i < count; i++) {
@@ -43,7 +36,7 @@ function createStarShell(count: number, seed: number, inner: number, outer: numb
 function createDustBand(count: number) {
   const positions = new Float32Array(count * 3)
   const colors = new Float32Array(count * 3)
-  const random = randomGenerator(81422)
+  const random = createSeededRandom(81422)
   const color = new THREE.Color()
 
   for (let i = 0; i < count; i++) {
@@ -110,6 +103,7 @@ function createStarPointTexture() {
 
 export function Starfield() {
   const { starBrightness, trueScale } = useSimulation()
+  const freezeAnimation = isVisualTestMode()
   const faintMaterial = useRef<THREE.PointsMaterial>(null)
   const brightMaterial = useRef<THREE.PointsMaterial>(null)
   const backgroundRef = useRef<THREE.Group>(null)
@@ -121,7 +115,7 @@ export function Starfield() {
   const milkyWay = useFileTexture(MILKY_WAY_URL)
 
   useFrame(({ clock, camera }) => {
-    const time = clock.elapsedTime
+    const time = freezeAnimation ? 0 : clock.elapsedTime
     // The panorama is "sky at infinity": keep it centered on the camera so its
     // far wall can never cross the far clip plane (which cut a black hole into
     // the background when following distant probes or zooming far out).

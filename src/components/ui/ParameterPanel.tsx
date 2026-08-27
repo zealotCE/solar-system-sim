@@ -155,6 +155,8 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
     englishOnly,
   } = useSimulation()
   const text = (chinese: string, english: string) => (englishOnly ? english : chinese)
+  const semanticText = (chinese: string, english: string) =>
+    pureChinese ? chinese : englishOnly ? english : `${chinese} / ${english}`
 
   return (
     <div className={cn('space-y-5', compact ? 'px-1 pb-4' : 'p-4')}>
@@ -181,12 +183,12 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
             <span className="mt-0.5 block text-[10px] leading-relaxed text-slate-500">
               {trueScale
                 ? text(
-                    '严格同比例：实体与轨道共用同一 km 比例尺；航天器识别模型随缩放变化并设可读上下限，准心仅标记未选中目标',
-                    'Strict physical scale: entities and orbits share one kilometre mapping; spacecraft identification models respond to zoom within readability bounds.',
+                    '严格同比例：实体与轨道共用同一 km 比例尺；选中航天器另叠加有界的非物理屏幕识别模型，未选中目标仅用固定尺寸准心',
+                    'Strict physical scale for entities and orbits; selected spacecraft add a bounded, non-physical screen-space identification model, while unselected targets use fixed-size reticles.',
                   )
                 : text(
-                    '当前为艺术化比例：外侧轨道压缩、天体放大以便观赏',
-                    'Stylized scale: outer orbits are compressed and bodies enlarged for readability.',
+                    '当前为艺术化比例：外侧轨道压缩、天体放大；航天器以固定屏幕尺寸准心识别，不叠加大面积辉光',
+                    'Stylized scale: outer orbits are compressed and bodies enlarged; fixed-size spacecraft reticles replace broad glow.',
                   )}
             </span>
           </span>
@@ -194,6 +196,69 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
             <span className="toggle-thumb" />
           </span>
         </button>
+      </section>
+
+      <section className="trajectory-legend">
+        <div className="section-rule mb-2">
+          <span>{semanticText('轨迹语义', 'TRAJECTORY SEMANTICS')}</span>
+          <span>PROVENANCE · TIME</span>
+        </div>
+        <div className="trajectory-legend-grid">
+          <div className="trajectory-legend-item">
+            <span
+              className="trajectory-legend-swatch trajectory-legend-swatch--actual"
+              aria-hidden="true"
+            />
+            <span>
+              {semanticText(
+                '已飞行 / 已知 · 实线渐变',
+                'FLOWN / KNOWN · SOLID GRADIENT',
+              )}
+            </span>
+          </div>
+          <div className="trajectory-legend-item">
+            <span
+              className="trajectory-legend-swatch trajectory-legend-swatch--predicted"
+              aria-hidden="true"
+            />
+            <span>
+              {semanticText(
+                '预测 / 传播 · 低透明虚线',
+                'PREDICTED / PROPAGATED · DIM DASHED',
+              )}
+            </span>
+          </div>
+          <div className="trajectory-legend-item">
+            <span
+              className="trajectory-legend-swatch trajectory-legend-swatch--cursor"
+              aria-hidden="true"
+            />
+            <span>
+              {semanticText(
+                '当前模拟时刻 · 小圆标',
+                'CURRENT SIM TIME · SMALL MARKER',
+              )}
+            </span>
+          </div>
+          <div className="trajectory-legend-item">
+            <span
+              className="trajectory-legend-swatch trajectory-legend-swatch--osculating"
+              aria-hidden="true"
+            />
+            <span>
+              {semanticText(
+                '瞬时密切轨道 · 细闭合线',
+                'INSTANTANEOUS OSCULATING ORBIT · THIN CLOSED LINE',
+              )}
+            </span>
+          </div>
+        </div>
+        <p className="trajectory-legend-note">
+          {semanticText(
+            '线型由任务数据来源边界固定；模拟日期只移动时刻标记。',
+            'Line status is fixed by mission provenance; model time only moves the marker.',
+          )}
+        </p>
       </section>
 
       <section>

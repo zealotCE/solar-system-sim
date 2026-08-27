@@ -9,7 +9,17 @@ import {
   getPlanetPosition,
   kmToSceneUnits,
 } from './planets'
-import { HORIZONS_TRAJECTORIES, type HorizonsVectorSample } from './horizonsTrajectories'
+import { HORIZONS_TRAJECTORY_INDEX } from './horizonsTrajectoryIndex'
+import type {
+  Trajectory,
+  TrajectoryId,
+  TrajectorySample,
+} from './trajectoryTypes'
+import {
+  HORIZONS_TRAIL_QUALITY_CONFIG,
+  type HorizonsTrailQuality,
+} from '../lib/screenSpaceLod'
+import type { TimedTrailPoint, TrailPoint } from '../lib/trajectorySemantics'
 
 export type SpacecraftKind = 'deep-probe' | 'solar-probe' | 'telescope' | 'station' | 'orbiter'
 
@@ -28,13 +38,17 @@ export type SpacecraftProvenance = {
   frame: string
   modelClass: SpacecraftModelClass
   caveat: string
-  /** Checked-in source record for an offline JPL Horizons trajectory pack. */
-  trajectoryCoverage?: {
-    startJdTdb: number
-    endJdTdb: number
-    interpolation: string
-    manifest: string
-  }
+}
+
+/** Lightweight index metadata retained without embedding any state vectors. */
+export type SpacecraftTrajectoryCoverage = {
+  startJdTdb: number
+  endJdTdb: number
+  actualDataThrough: string
+  predictionStarts: string
+  predictionStartsJdTdb: number
+  interpolation: string
+  manifest: string
 }
 
 export type SpacecraftData = {
@@ -59,8 +73,9 @@ export type SpacecraftData = {
   velocityKms?: number
   orbitNote?: string
   orbitNoteEn?: string
-  /** Offline Sun-centered geometric ICRF/TDB Cartesian samples, if available. */
-  trajectory?: readonly HorizonsVectorSample[]
+  /** Content-addressed trajectory loaded through the synchronous registry cache. */
+  trajectoryId?: TrajectoryId
+  trajectoryCoverage?: SpacecraftTrajectoryCoverage
   /** Orbiting craft: anchor body plus simplified Kepler elements (scene units). */
   anchor?: 'sun' | 'earth' | 'earth-l2' | 'jupiter'
   orbitRadius?: number
@@ -77,22 +92,39 @@ export type SpacecraftData = {
 
 const EARTH = PLANETS.find((planet) => planet.id === 'earth')!
 const JUPITER = PLANETS.find((planet) => planet.id === 'jupiter')!
+const UNIX_EPOCH_JD = 2440587.5
+const MS_PER_DAY = 86_400_000
 
-function horizonsProvenance(
-  samples: readonly HorizonsVectorSample[],
-  epochLabel: string,
-): SpacecraftProvenance {
+function jdTdbToDate(jdTdb: number): string {
+  return new Date((jdTdb - UNIX_EPOCH_JD) * MS_PER_DAY).toISOString().slice(0, 10)
+}
+
+function horizonsTrajectory(
+  id: TrajectoryId,
+): Pick<SpacecraftData, 'trajectoryId' | 'trajectoryCoverage' | 'provenance'> {
+  const index = HORIZONS_TRAJECTORY_INDEX[id]
+  const interpolation =
+    'cubic Hermite from position + velocity samples; endpoint clamping outside coverage'
   return {
-    source: 'JPL Horizons VECTORS offline trajectory pack',
-    sourceUrl: 'https://ssd.jpl.nasa.gov/horizons/',
-    sourceEpoch: epochLabel,
-    frame: 'Sun-centered geometric ICRF; TDB; Cartesian AU (rendered in the J2000 ecliptic frame)',
-    modelClass: 'horizons-vector-trajectory',
-    caveat: 'Positions use cubic Hermite interpolation (position + velocity) between 30-day JPL Horizons state-vector samples. Dates outside the bundled range clamp to the nearest endpoint; no extrapolation is performed.',
+    trajectoryId: id,
     trajectoryCoverage: {
-      startJdTdb: samples[0][0], endJdTdb: samples[samples.length - 1][0],
-      interpolation: 'cubic Hermite from position + velocity samples; endpoint clamping outside coverage',
+      startJdTdb: index.firstJdTdb,
+      endJdTdb: index.lastJdTdb,
+      actualDataThrough: index.actualDataThrough,
+      predictionStarts: index.predictionStarts,
+      predictionStartsJdTdb: index.predictionStartsJdTdb,
+      interpolation,
       manifest: 'src/data/horizons-provenance.json',
+    },
+    provenance: {
+      source: 'JPL Horizons VECTORS offline mixed-cadence trajectory asset',
+      sourceUrl: 'https://ssd.jpl.nasa.gov/horizons/',
+      sourceEpoch: `${jdTdbToDate(index.firstJdTdb)} 至 ${jdTdbToDate(index.lastJdTdb)} TDB`,
+      frame:
+        'Sun-centered geometric ICRF; TDB; Cartesian AU (rendered in the J2000 ecliptic frame)',
+      modelClass: 'horizons-vector-trajectory',
+      caveat:
+        'Positions use cubic Hermite interpolation between mixed 30-day, 1-day, and 6-hour JPL Horizons state vectors. Dates outside asset coverage clamp to the nearest endpoint; no extrapolation is performed.',
     },
   }
 }
@@ -113,8 +145,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     status: '在役',
     kind: 'deep-probe',
     color: '#7dd3fc',
-    provenance: horizonsProvenance(HORIZONS_TRAJECTORIES.voyager1, '1977-09-08 至 2051-01-13 TDB'),
-    trajectory: HORIZONS_TRAJECTORIES.voyager1,
+    ...horizonsTrajectory('voyager1'),
     velocityKms: 17,
     description:
       '人类飞得最远的造物。1977 年出发，先后飞掠木星与土星，1990 年回望拍下「暗淡蓝点」，2012 年跨过日球层顶进入星际空间。它携带的金唱片仍在替人类向银河致意。',
@@ -133,8 +164,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     status: '在役',
     kind: 'deep-probe',
     color: '#67e8f9',
-    provenance: horizonsProvenance(HORIZONS_TRAJECTORIES.voyager2, '1977-08-21 至 2051-01-11 TDB'),
-    trajectory: HORIZONS_TRAJECTORIES.voyager2,
+    ...horizonsTrajectory('voyager2'),
     velocityKms: 15.4,
     description:
       '唯一造访过全部四颗巨行星的探测器：木星、土星、天王星、海王星的许多细节都由它首次揭示。2018 年进入星际空间，正朝着黄道面以南的深空远去。',
@@ -154,8 +184,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     status: '静默',
     kind: 'deep-probe',
     color: '#94a3b8',
-    provenance: horizonsProvenance(HORIZONS_TRAJECTORIES.pioneer10, '1972-03-04 至 2049-12-24 TDB'),
-    trajectory: HORIZONS_TRAJECTORIES.pioneer10,
+    ...horizonsTrajectory('pioneer10'),
     velocityKms: 12,
     description:
       '第一个穿越小行星带、第一个飞掠木星的探测器。2003 年信号彻底消失，如今静默地飞向金牛座毕宿五方向——抵达那里还需要约两百万年。',
@@ -174,8 +203,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     status: '在役',
     kind: 'deep-probe',
     color: '#c4b5fd',
-    provenance: horizonsProvenance(HORIZONS_TRAJECTORIES.newhorizons, '2006-01-20 至 2049-12-30 TDB'),
-    trajectory: HORIZONS_TRAJECTORIES.newhorizons,
+    ...horizonsTrajectory('newhorizons'),
     velocityKms: 13.8,
     description:
       '2015 年飞掠冥王星，传回心形冰原的著名影像；2019 年又造访柯伊伯带天体「天涯海角」。目前正穿越柯伊伯带外缘，继续研究太阳风与深空尘埃。',
@@ -195,11 +223,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     status: '静默',
     kind: 'deep-probe',
     color: '#f6c86b',
-    provenance: horizonsProvenance(
-      HORIZONS_TRAJECTORIES.cassini,
-      '1997-10-16 至 2017-09-01 TDB',
-    ),
-    trajectory: HORIZONS_TRAJECTORIES.cassini,
+    ...horizonsTrajectory('cassini'),
     description:
       '首个土星轨道器，在土星系统工作十三年。它发现了恩克拉多斯喷出的冰羽流、记录泰坦甲烷海，并以“壮丽终章”冲入土星大气保护潜在宜居卫星。',
     descriptionEn:
@@ -218,11 +242,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     status: '静默',
     kind: 'deep-probe',
     color: '#d8b58a',
-    provenance: horizonsProvenance(
-      HORIZONS_TRAJECTORIES.galileo,
-      '1989-10-20 至 2003-09-07 TDB',
-    ),
-    trajectory: HORIZONS_TRAJECTORIES.galileo,
+    ...horizonsTrajectory('galileo'),
     description:
       '首个木星轨道器，也是首个向巨行星大气投放探测器的任务。它提供了欧罗巴地下海洋的重要证据，并近距离研究了木卫一火山与木星磁层。',
     descriptionEn:
@@ -240,11 +260,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     status: '静默',
     kind: 'deep-probe',
     color: '#8fb7d8',
-    provenance: horizonsProvenance(
-      HORIZONS_TRAJECTORIES.dawn,
-      '2007-09-28 至 2043-10-19 TDB',
-    ),
-    trajectory: HORIZONS_TRAJECTORIES.dawn,
+    ...horizonsTrajectory('dawn'),
     description:
       '唯一先后环绕两个地外天体运行的航天器。离子推进让它能够离开灶神星再抵达谷神星，比较两个幸存原行星截然不同的演化道路。',
     descriptionEn:
@@ -263,11 +279,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     status: '静默',
     kind: 'deep-probe',
     color: '#b6c4d6',
-    provenance: horizonsProvenance(
-      HORIZONS_TRAJECTORIES.rosetta,
-      '2004-03-03 至 2016-09-26 TDB',
-    ),
-    trajectory: HORIZONS_TRAJECTORIES.rosetta,
+    ...horizonsTrajectory('rosetta'),
     description:
       '首个环绕彗星运行的任务，伴随 67P 彗星越过近日点，并释放菲莱完成首次彗核软着陆。任务最终以受控方式降落在彗星表面。',
     descriptionEn:
@@ -285,11 +297,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     status: '在役',
     kind: 'deep-probe',
     color: '#e3c07b',
-    provenance: horizonsProvenance(
-      HORIZONS_TRAJECTORIES.osirisrex,
-      '2016-09-09 至 2030-02-28 TDB',
-    ),
-    trajectory: HORIZONS_TRAJECTORIES.osirisrex,
+    ...horizonsTrajectory('osirisrex'),
     description:
       '完成美国首次小行星采样返回后，航天器更名 OSIRIS-APEX，继续飞往阿波菲斯，计划在其 2029 年近地飞掠后研究表面变化。',
     descriptionEn:
@@ -307,11 +315,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     status: '在役',
     kind: 'deep-probe',
     color: '#d6a8f0',
-    provenance: horizonsProvenance(
-      HORIZONS_TRAJECTORIES.lucy,
-      '2021-10-17 至 2033-03-18 TDB',
-    ),
-    trajectory: HORIZONS_TRAJECTORIES.lucy,
+    ...horizonsTrajectory('lucy'),
     description:
       '首个造访木星特洛伊小行星的任务，将飞掠多个不同光谱类型的原始小天体，以检验巨行星迁移和太阳系早期混合的模型。',
     descriptionEn:
@@ -329,11 +333,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     status: '在役',
     kind: 'deep-probe',
     color: '#d99172',
-    provenance: horizonsProvenance(
-      HORIZONS_TRAJECTORIES.psyche,
-      '2023-10-14 至 2029-01-15 TDB',
-    ),
-    trajectory: HORIZONS_TRAJECTORIES.psyche,
+    ...horizonsTrajectory('psyche'),
     description:
       '正在前往富金属小行星 16 Psyche，计划测绘其组成、地形、重力和残余磁场，并携带深空光通信技术演示设备。',
     descriptionEn:
@@ -351,11 +351,7 @@ export const SPACECRAFT: SpacecraftData[] = [
     status: '在役',
     kind: 'deep-probe',
     color: '#8bd8ff',
-    provenance: horizonsProvenance(
-      HORIZONS_TRAJECTORIES.europaclipper,
-      '2024-10-15 至 2034-08-24 TDB',
-    ),
-    trajectory: HORIZONS_TRAJECTORIES.europaclipper,
+    ...horizonsTrajectory('europaclipper'),
     description:
       'NASA 最大的行星际航天器，计划 2030 年抵达木星，通过约 49 次欧罗巴近飞研究冰壳、地下海洋、成分和潜在宜居环境。',
     descriptionEn:
@@ -569,9 +565,6 @@ export function getSpacecraftById(id: string | null): SpacecraftData | null {
   return SPACECRAFT.find((craft) => craft.id === id) ?? null
 }
 
-const UNIX_EPOCH_JD = 2440587.5
-const MS_PER_DAY = 86_400_000
-
 /** Whether the craft physically exists at the current model time. */
 export function isCraftLaunched(craft: SpacecraftData, simTime: number): boolean {
   const launchJd = Date.parse(`${craft.launchDate}T00:00:00Z`) / MS_PER_DAY + UNIX_EPOCH_JD
@@ -595,10 +588,14 @@ export type CraftModifiers = {
   trueScale?: boolean
 }
 
-/** Live heliocentric distance in AU for deep-space probes. */
-export function getCraftLiveAu(craft: SpacecraftData, simTime: number): number {
-  if (!craft.trajectory) return 0
-  const [, x, y, z] = getHorizonsSample(craft.trajectory, simTime)
+/** Live heliocentric distance in AU for a synchronously cached trajectory. */
+export function getCraftLiveAu(
+  craft: SpacecraftData,
+  simTime: number,
+  trajectory: Trajectory | null,
+): number | null {
+  if (!craft.trajectoryId || !trajectory?.length) return null
+  const [, x, y, z] = getHorizonsSample(trajectory, simTime)
   return Math.hypot(x, y, z)
 }
 
@@ -681,13 +678,6 @@ const AU_ANCHOR_TANGENTS = buildMonotoneTangents(AU_ANCHORS)
 const DEEP_SPACE_SOFTENING_AU = 2
 
 /**
- * True-scale display ceiling for the interstellar probes: 192 AU keeps
- * Voyager 1 inside the camera envelope through 2050 while every other body
- * stays strictly proportional (only distances beyond 192 AU are clamped).
- */
-export const TRUE_DEEP_SPACE_CAP_AU = 192
-
-/**
  * Maps a real heliocentric distance to a scene radius. Stylized mode uses a
  * monotone cubic curve through the handcrafted planet anchors, then a
  * derivative-matched logarithmic tail beyond Pluto. The old piecewise-linear
@@ -695,7 +685,7 @@ export const TRUE_DEEP_SPACE_CAP_AU = 192
  * creating the visible, non-physical "corners" in Voyager trails.
  */
 export function auToSceneRadius(au: number, trueScale: boolean): number {
-  if (trueScale) return Math.min(au, TRUE_DEEP_SPACE_CAP_AU) * AU_UNITS
+  if (trueScale) return au * AU_UNITS
   if (au <= 0) return 0
 
   const last = AU_ANCHORS.length - 1
@@ -733,13 +723,11 @@ export function auToSceneRadius(au: number, trueScale: boolean): number {
   return plutoRadius
 }
 
-export type TrailPoint = [number, number, number]
-
 function interpolateHorizonsSamples(
-  a: HorizonsVectorSample,
-  b: HorizonsVectorSample,
+  a: TrajectorySample,
+  b: TrajectorySample,
   t: number,
-): HorizonsVectorSample {
+): TrajectorySample {
   const h = b[0] - a[0]
   const t2 = t * t
   const t3 = t2 * t
@@ -766,8 +754,7 @@ function interpolateHorizonsSamples(
  * 30-day sampling still reproduces curved flyby arcs faithfully. Outside the
  * bundled coverage the nearest endpoint is returned (no extrapolation).
  */
-function getHorizonsSample(samples: readonly HorizonsVectorSample[], simTime: number): HorizonsVectorSample {
-  const jd = simTimeToJd(simTime)
+function getHorizonsSampleAtJd(samples: Trajectory, jd: number): TrajectorySample {
   if (jd <= samples[0][0]) return samples[0]
   const last = samples[samples.length - 1]
   if (jd >= last[0]) return last
@@ -783,7 +770,11 @@ function getHorizonsSample(samples: readonly HorizonsVectorSample[], simTime: nu
   return interpolateHorizonsSamples(a, b, (jd - a[0]) / (b[0] - a[0]))
 }
 
-function horizonsSampleToScene(sample: HorizonsVectorSample, modifiers: CraftModifiers): TrailPoint {
+function getHorizonsSample(samples: Trajectory, simTime: number): TrajectorySample {
+  return getHorizonsSampleAtJd(samples, simTimeToJd(simTime))
+}
+
+function horizonsSampleToScene(sample: TrajectorySample, modifiers: CraftModifiers): TrailPoint {
   const [, xIcrf, yIcrf, zIcrf] = sample
   // Rotate into the ecliptic frame so probes share the planets' reference plane.
   const [x, y, z] = icrfToEclipticAu(xIcrf, yIcrf, zIcrf)
@@ -792,51 +783,236 @@ function horizonsSampleToScene(sample: HorizonsVectorSample, modifiers: CraftMod
   return eclipticToScene([x / distance, y / distance, z / distance], radius)
 }
 
+function horizonsSampleToTimedTrailPoint(
+  sample: TrajectorySample,
+  modifiers: CraftModifiers,
+): TimedTrailPoint {
+  const [x, y, z] = horizonsSampleToScene(sample, modifiers)
+  return [sample[0], x, y, z]
+}
+
+function timedTrailSpatialPoint(point: TimedTrailPoint): TrailPoint {
+  return [point[1], point[2], point[3]]
+}
+
+export type DeepProbeTrailCursorState = Readonly<{
+  visible: boolean
+  requestedJdTdb: number
+  clampedJdTdb: number | null
+  point: TrailPoint | null
+}>
+
+/**
+ * Lightweight per-frame cursor sample. Interpolation clamps internally for
+ * safe indexing, while visibility remains false outside loaded coverage.
+ */
+export function getDeepProbeTrailCursorStateAtJd(
+  trajectory: Trajectory | null,
+  jdTdb: number,
+  modifiers: CraftModifiers = {},
+): DeepProbeTrailCursorState {
+  if (!trajectory?.length || !Number.isFinite(jdTdb)) {
+    return {
+      visible: false,
+      requestedJdTdb: jdTdb,
+      clampedJdTdb: null,
+      point: null,
+    }
+  }
+  const firstJdTdb = trajectory[0][0]
+  const lastJdTdb = trajectory.at(-1)![0]
+  const clampedJdTdb = Math.min(lastJdTdb, Math.max(firstJdTdb, jdTdb))
+  return {
+    visible: jdTdb >= firstJdTdb && jdTdb <= lastJdTdb,
+    requestedJdTdb: jdTdb,
+    clampedJdTdb,
+    point: horizonsSampleToScene(
+      getHorizonsSampleAtJd(trajectory, clampedJdTdb),
+      modifiers,
+    ),
+  }
+}
+
 /**
  * Reconstructed flight path in scene coordinates. Raw Horizons vectors are
  * 30 days apart, so each interval is adaptively subdivided with the same
- * position+velocity Hermite curve used by live placement. Angular steps stay
- * below about 1.5° in the inner system instead of exposing the raw polygon.
+ * position+velocity Hermite curve used by live placement. The focus tier keeps
+ * the existing sub-degree target; overview and medium relax turn, depth and
+ * flatness together for screen-space LOD. Every adaptive vertex retains its
+ * TDB Julian date for provenance splitting and time-gradient rendering.
  */
 export function getDeepProbeTrailWaypoints(
   craft: SpacecraftData,
+  trajectory: Trajectory | null,
   modifiers: CraftModifiers = {},
-): TrailPoint[] {
-  if (!craft.trajectory) return []
-  const result: TrailPoint[] = []
-  for (let index = 0; index < craft.trajectory.length - 1; index++) {
-    const a = craft.trajectory[index]
-    const b = craft.trajectory[index + 1]
+  quality: HorizonsTrailQuality = 'focus',
+): TimedTrailPoint[] {
+  if (!craft.trajectoryId || !trajectory?.length) return []
+  const result: TimedTrailPoint[] = []
+  const {
+    maxTurn,
+    maxDepth,
+    minimumDepthNear,
+    minimumDepthMid,
+    absoluteFlatness,
+    relativeFlatness,
+  } = HORIZONS_TRAIL_QUALITY_CONFIG[quality]
+  const distance = (a: TrailPoint, b: TrailPoint) =>
+    Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+  const vectorAngle = (a: TrailPoint, b: TrailPoint) => {
+    const denominator = Math.hypot(...a) * Math.hypot(...b)
+    if (denominator < 1e-14) return 0
+    return Math.acos(
+      Math.max(
+        -1,
+        Math.min(1, (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / denominator),
+      ),
+    )
+  }
+  const turnAngle = (a: TrailPoint, b: TrailPoint, c: TrailPoint) => {
+    const ab: TrailPoint = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
+    const bc: TrailPoint = [c[0] - b[0], c[1] - b[1], c[2] - b[2]]
+    return vectorAngle(ab, bc)
+  }
+  const pointToSegmentDistance = (point: TrailPoint, start: TrailPoint, end: TrailPoint) => {
+    const segment: TrailPoint = [
+      end[0] - start[0],
+      end[1] - start[1],
+      end[2] - start[2],
+    ]
+    const lengthSquared =
+      segment[0] * segment[0] + segment[1] * segment[1] + segment[2] * segment[2]
+    if (lengthSquared === 0) return distance(point, start)
+    const offset: TrailPoint = [
+      point[0] - start[0],
+      point[1] - start[1],
+      point[2] - start[2],
+    ]
+    const t = Math.max(
+      0,
+      Math.min(
+        1,
+        (offset[0] * segment[0] + offset[1] * segment[1] + offset[2] * segment[2]) /
+          lengthSquared,
+      ),
+    )
+    return distance(point, [
+      start[0] + segment[0] * t,
+      start[1] + segment[1] * t,
+      start[2] + segment[2] * t,
+    ])
+  }
+
+  for (let index = 0; index < trajectory.length - 1; index++) {
+    const a = trajectory[index]
+    const b = trajectory[index + 1]
     const radiusA = Math.hypot(a[1], a[2], a[3])
     const radiusB = Math.hypot(b[1], b[2], b[3])
-    const denominator = radiusA * radiusB
-    const cosine = denominator
-      ? Math.max(
-          -1,
-          Math.min(
-            1,
-          (a[1] * b[1] + a[2] * b[2] + a[3] * b[3]) / denominator,
-          ),
-        )
-      : 1
-    const angle = Math.acos(cosine)
     const minimumRadius = Math.min(radiusA, radiusB)
-    const nearSunMinimum = minimumRadius < 2 ? 16 : minimumRadius < 8 ? 8 : 1
-    const subdivisions = Math.min(
-      64,
-      Math.max(nearSunMinimum, Math.ceil(angle / (Math.PI / 360))),
-    )
-    for (let step = 0; step < subdivisions; step++) {
-      result.push(
-        horizonsSampleToScene(
-          interpolateHorizonsSamples(a, b, step / subdivisions),
-          modifiers,
-        ),
+    const minimumDepth =
+      minimumRadius < 2
+        ? minimumDepthNear
+        : minimumRadius < 8
+          ? minimumDepthMid
+          : 0
+    const sample = (t: number) =>
+      horizonsSampleToTimedTrailPoint(
+        interpolateHorizonsSamples(a, b, t),
+        modifiers,
       )
+
+    const appendAdaptive = (
+      t0: number,
+      p0: TimedTrailPoint,
+      t1: number,
+      p1: TimedTrailPoint,
+      depth: number,
+    ) => {
+      const width = t1 - t0
+      const quarter = sample(t0 + width * 0.25)
+      const middle = sample(t0 + width * 0.5)
+      const threeQuarter = sample(t0 + width * 0.75)
+      const spatialP0 = timedTrailSpatialPoint(p0)
+      const spatialQuarter = timedTrailSpatialPoint(quarter)
+      const spatialMiddle = timedTrailSpatialPoint(middle)
+      const spatialThreeQuarter = timedTrailSpatialPoint(threeQuarter)
+      const spatialP1 = timedTrailSpatialPoint(p1)
+      const localTurn = Math.max(
+        turnAngle(spatialP0, spatialQuarter, spatialMiddle),
+        turnAngle(spatialQuarter, spatialMiddle, spatialThreeQuarter),
+        turnAngle(spatialMiddle, spatialThreeQuarter, spatialP1),
+      )
+      const chordLength = distance(spatialP0, spatialP1)
+      const chord: TrailPoint = [
+        spatialP1[0] - spatialP0[0],
+        spatialP1[1] - spatialP0[1],
+        spatialP1[2] - spatialP0[2],
+      ]
+      const startDirection: TrailPoint = [
+        spatialQuarter[0] - spatialP0[0],
+        spatialQuarter[1] - spatialP0[1],
+        spatialQuarter[2] - spatialP0[2],
+      ]
+      const endDirection: TrailPoint = [
+        spatialP1[0] - spatialThreeQuarter[0],
+        spatialP1[1] - spatialThreeQuarter[1],
+        spatialP1[2] - spatialThreeQuarter[2],
+      ]
+      const endpointTurn = Math.max(
+        vectorAngle(chord, startDirection),
+        vectorAngle(chord, endDirection),
+      )
+      const flatness = Math.max(
+        pointToSegmentDistance(spatialQuarter, spatialP0, spatialP1),
+        pointToSegmentDistance(spatialMiddle, spatialP0, spatialP1),
+        pointToSegmentDistance(spatialThreeQuarter, spatialP0, spatialP1),
+      )
+      const flatnessTolerance = Math.max(
+        absoluteFlatness,
+        chordLength * relativeFlatness,
+      )
+      const shouldSplit =
+        depth < minimumDepth ||
+        localTurn > maxTurn ||
+        endpointTurn > maxTurn * 0.5 ||
+        flatness > flatnessTolerance
+
+      if (shouldSplit && depth < maxDepth) {
+        const midpoint = t0 + width * 0.5
+        appendAdaptive(t0, p0, midpoint, middle, depth + 1)
+        appendAdaptive(midpoint, middle, t1, p1, depth + 1)
+      } else {
+        result.push(p0)
+      }
     }
+
+    appendAdaptive(0, sample(0), 1, sample(1), 0)
   }
-  result.push(horizonsSampleToScene(craft.trajectory.at(-1)!, modifiers))
+  result.push(horizonsSampleToTimedTrailPoint(trajectory.at(-1)!, modifiers))
   return result
+}
+
+/**
+ * Small, time-uniform world-space guide used only for camera-distance and
+ * projected-curvature LOD decisions. It never replaces the rendered Hermite
+ * curve or its mixed-cadence source vectors.
+ */
+export function getDeepProbeTrailLodGuide(
+  trajectory: Trajectory | null,
+  modifiers: CraftModifiers = {},
+  maxPoints = 129,
+): TrailPoint[] {
+  if (!trajectory?.length || maxPoints < 2) return []
+  if (trajectory.length === 1) {
+    return [horizonsSampleToScene(trajectory[0], modifiers)]
+  }
+  const firstJd = trajectory[0][0]
+  const lastJd = trajectory.at(-1)![0]
+  const pointCount = Math.min(maxPoints, trajectory.length)
+  return Array.from({ length: pointCount }, (_, index) => {
+    const jd = firstJd + ((lastJd - firstJd) * index) / (pointCount - 1)
+    return horizonsSampleToScene(getHorizonsSampleAtJd(trajectory, jd), modifiers)
+  })
 }
 
 /** Orbit radius for a sun-anchored craft (Parker), true-scale aware. */
@@ -875,8 +1051,9 @@ export type CraftPlacement = {
 export function getSpacecraftPlacement(
   craft: SpacecraftData,
   simTime: number,
+  trajectory: Trajectory | null,
   modifiers: CraftModifiers = {},
-): CraftPlacement {
+): CraftPlacement | null {
   const orbitScale = modifiers.orbitScale ?? 1
   const eccentricityScale = modifiers.eccentricityScale ?? 1
   const inclinationScale = modifiers.inclinationScale ?? 1
@@ -884,10 +1061,11 @@ export function getSpacecraftPlacement(
   const trueScale = modifiers.trueScale ?? false
   const localScale = Math.max(1, planetScale * 0.92)
 
-  if (craft.kind === 'deep-probe' && craft.trajectory) {
+  if (craft.trajectoryId) {
+    if (!trajectory?.length) return null
     return {
       anchor: [0, 0, 0],
-      local: horizonsSampleToScene(getHorizonsSample(craft.trajectory, simTime), modifiers),
+      local: horizonsSampleToScene(getHorizonsSample(trajectory, simTime), modifiers),
     }
   }
 
@@ -937,9 +1115,12 @@ export function getSpacecraftPlacement(
 export function getSpacecraftPosition(
   craft: SpacecraftData,
   simTime: number,
+  trajectory: Trajectory | null,
   modifiers: CraftModifiers = {},
-): [number, number, number] {
-  const { anchor, local } = getSpacecraftPlacement(craft, simTime, modifiers)
+): [number, number, number] | null {
+  const placement = getSpacecraftPlacement(craft, simTime, trajectory, modifiers)
+  if (!placement) return null
+  const { anchor, local } = placement
   return [anchor[0] + local[0], anchor[1] + local[1], anchor[2] + local[2]]
 }
 
@@ -951,9 +1132,11 @@ export function getSpacecraftPosition(
 export function getCraftHeliocentricAu(
   craft: SpacecraftData,
   simTime: number,
-): [number, number, number] {
-  if (craft.trajectory) {
-    const [, x, y, z] = getHorizonsSample(craft.trajectory, simTime)
+  trajectory: Trajectory | null,
+): [number, number, number] | null {
+  if (craft.trajectoryId) {
+    if (!trajectory?.length) return null
+    const [, x, y, z] = getHorizonsSample(trajectory, simTime)
     return icrfToEclipticAu(x, y, z)
   }
   if (craft.anchor === 'sun') {
@@ -1009,14 +1192,16 @@ export type CraftStats = {
 export function getCraftStats(
   craft: SpacecraftData,
   simTime: number,
+  trajectory: Trajectory | null,
   englishOnly = false,
-): CraftStats {
+): CraftStats | null {
   const age = Math.max(0, 2026 + simTime - craft.launchYear)
   const velocity = craft.velocityKms ? `${craft.velocityKms} km/s` : '—'
   const ageLabel = englishOnly ? `${age.toFixed(0)} YEARS` : `${age.toFixed(0)} 年`
 
   if (craft.kind === 'deep-probe') {
-    const au = getCraftLiveAu(craft, simTime)
+    const au = getCraftLiveAu(craft, simTime, trajectory)
+    if (au === null) return null
     const lightHours = (au * 499) / 3600
     return {
       distance: `${au.toFixed(1)} AU`,

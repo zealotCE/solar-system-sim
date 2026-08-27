@@ -12,6 +12,7 @@ import {
   type PlanetData,
 } from '@/data/planets'
 import { useSimulation } from '@/hooks/useSimulation'
+import { MOON_ORBIT_MAX_SEGMENTS } from '@/lib/screenSpaceLod'
 import { useBodySurface } from '@/lib/textureAssets'
 import { OrbitLine } from './OrbitLine'
 
@@ -110,6 +111,8 @@ export function Moon({ moon, parent }: MoonProps) {
           inclination={(moon.inclination ?? 0) * (trueScale ? 1 : inclinationScale)}
           color={moon.color}
           active={selected}
+          lodMaxSegments={MOON_ORBIT_MAX_SEGMENTS}
+          semantic="osculating"
         />
       ) : null}
 

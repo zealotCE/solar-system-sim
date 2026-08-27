@@ -1,13 +1,20 @@
 import { Html, Line } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 
+import {
+  cancelQueuedTrajectory,
+  queueTrajectories,
+  type TrajectoryId,
+} from '@/data/trajectoryRegistry'
 import {
   SPACECRAFT,
   getCraftFocusRadius,
   getCraftPhysicalSpan,
   getCraftSunOrbitRadius,
+  getDeepProbeTrailCursorStateAtJd,
+  getDeepProbeTrailLodGuide,
   getDeepProbeTrailWaypoints,
   getSpacecraftPlacement,
   isCraftLaunched,
@@ -15,23 +22,48 @@ import {
   type SpacecraftData,
   type SpacecraftKind,
 } from '@/data/spacecraft'
+import { simTimeToJd } from '@/data/ephemeris'
+import { useScreenSpaceLod } from '@/hooks/useScreenSpaceLod'
 import { useSimulation } from '@/hooks/useSimulation'
-import { getCraftLocatorTexture, getGlowTexture } from '@/lib/planetTextures'
+import { useTrajectory } from '@/hooks/useTrajectory'
+import { getCraftLocatorTexture } from '@/lib/planetTextures'
+import {
+  HORIZONS_TRAIL_PROJECTED_ERROR_THRESHOLDS_PX,
+  HORIZONS_TRAIL_QUALITY_ORDER,
+  PARKER_ORBIT_MAX_SEGMENTS,
+  getPolylineSagittaSamples,
+} from '@/lib/screenSpaceLod'
 import { getCraftModel } from '@/lib/spacecraftModels'
+import {
+  ACTUAL_TRAJECTORY_GRADIENT_START,
+  getActualTrajectoryGradientMix,
+  getTrajectoryCursorDiameterPixels,
+  getTrajectoryLineStyle,
+  splitTimedTrailAtPredictionBoundary,
+} from '@/lib/trajectorySemantics'
 import { CraftGlbModel } from './CraftGlbModel'
 import { OrbitLine } from './OrbitLine'
 
-type MarkerSizes = { mesh: number; glow: number; hit: number; labelAlways: boolean }
+type MarkerSizes = { mesh: number; hit: number; labelAlways: boolean }
 
 const MARKER_SIZES: Record<SpacecraftKind, MarkerSizes> = {
-  'deep-probe': { mesh: 0.42, glow: 2.4, hit: 1.6, labelAlways: true },
-  'solar-probe': { mesh: 0.2, glow: 1.1, hit: 0.8, labelAlways: true },
-  telescope: { mesh: 0.085, glow: 0.4, hit: 0.34, labelAlways: false },
-  station: { mesh: 0.075, glow: 0.36, hit: 0.3, labelAlways: false },
-  orbiter: { mesh: 0.13, glow: 0.55, hit: 0.5, labelAlways: false },
+  'deep-probe': { mesh: 0.42, hit: 1.6, labelAlways: true },
+  'solar-probe': { mesh: 0.2, hit: 0.8, labelAlways: true },
+  telescope: { mesh: 0.085, hit: 0.34, labelAlways: false },
+  station: { mesh: 0.075, hit: 0.3, labelAlways: false },
+  orbiter: { mesh: 0.13, hit: 0.5, labelAlways: false },
 }
 
+const LOCATOR_PIXELS = 20
+const TRUE_SCALE_PROXY_REFERENCE_RATIO = 0.4
+const SELECTED_PROXY_MIN_PIXELS = 112
+const SELECTED_PROXY_MAX_PIXELS = 156
+const SELECTED_MARKER_MIN_PIXELS = 28
+const SELECTED_MARKER_MAX_PIXELS = 40
+const UNSELECTED_PROXY_MAX_PIXELS = 18
+
 const scratchWorld = new THREE.Vector3()
+const cursorScratchWorld = new THREE.Vector3()
 
 function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
   const anchorRef = useRef<THREE.Group>(null)
@@ -41,6 +73,7 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
   const visualProxyRef = useRef<THREE.Group>(null)
   const hitRef = useRef<THREE.Mesh>(null)
   const locatorRef = useRef<THREE.Sprite>(null)
+  const trailCursorRef = useRef<THREE.Group>(null)
   const labelRef = useRef<HTMLDivElement>(null)
   const labelVisibleRef = useRef(false)
   const { size } = useThree()
@@ -58,9 +91,12 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
     englishOnly,
     orbitEpoch,
   } = useSimulation()
-  const glow = useMemo(() => getGlowTexture(), [])
   const locator = useMemo(() => getCraftLocatorTexture(), [])
   const selected = selectedPlanetId === craft.id
+  const trajectorySnapshot = useTrajectory(craft.trajectoryId ?? null, {
+    load: selected,
+  })
+  const trajectory = trajectorySnapshot?.samples ?? null
   const baseSizes = MARKER_SIZES[craft.kind]
   const physicalSpan = getCraftPhysicalSpan(craft)
   const physicalRadius = physicalSpan / 2
@@ -68,7 +104,6 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
   // comes from a separate screen-space locator, never by enlarging the body.
   const sizes = {
     mesh: trueScale ? physicalRadius : baseSizes.mesh,
-    glow: baseSizes.glow,
     // Picking remains generous but invisible; it does not affect the rendered
     // scale of the spacecraft marker.
     hit: baseSizes.hit,
@@ -76,37 +111,96 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
   }
   const model = getCraftModel(craft.id)
   const stylizedModelRadius = getCraftFocusRadius(craft, false) * 1.7
-  const proxyWorldSpan = getCraftFocusRadius(craft, true) * 0.2
+  // CameraRig focuses craft from roughly three focus radii away. This reference
+  // therefore lands near 16% of viewport height before the safety bounds apply.
+  const proxyWorldSpan =
+    getCraftFocusRadius(craft, true) * TRUE_SCALE_PROXY_REFERENCE_RATIO
+
+  const trailLodGuide = useMemo(
+    () =>
+      getDeepProbeTrailLodGuide(trajectory, {
+        orbitScale,
+        inclinationScale,
+        trueScale,
+      }),
+    [trajectory, orbitScale, inclinationScale, trueScale],
+  )
+  const trailErrorSamples = useMemo(
+    () => getPolylineSagittaSamples(trailLodGuide),
+    [trailLodGuide],
+  )
+  const trailTierIndex = useScreenSpaceLod({
+    points: trailLodGuide,
+    errorSamples: trailErrorSamples,
+    thresholds: HORIZONS_TRAIL_PROJECTED_ERROR_THRESHOLDS_PX,
+    initialIndex: selected ? HORIZONS_TRAIL_QUALITY_ORDER.length - 1 : 0,
+    maxIndex: HORIZONS_TRAIL_QUALITY_ORDER.length - 1,
+    forceMax: selected,
+    enabled: showOrbits && Boolean(trajectory),
+  })
+  const trailQuality = HORIZONS_TRAIL_QUALITY_ORDER[trailTierIndex]
 
   // Reconstructed flight path straight from the offline Horizons samples.
   const trail = useMemo(() => {
-    const waypoints = getDeepProbeTrailWaypoints(craft, {
-      orbitScale,
-      inclinationScale,
-      trueScale,
-    })
+    const waypoints = getDeepProbeTrailWaypoints(
+      craft,
+      trajectory,
+      {
+        orbitScale,
+        inclinationScale,
+        trueScale,
+      },
+      trailQuality,
+    )
     if (!waypoints.length) return null
-    const placement = getSpacecraftPlacement(craft, orbitEpoch, {
+    const placement = getSpacecraftPlacement(craft, orbitEpoch, trajectory, {
       orbitScale,
       eccentricityScale,
       inclinationScale,
       planetScale,
       trueScale,
     })
+    if (!placement) return null
     const anchor = new THREE.Vector3(
       placement.anchor[0] + placement.local[0],
       placement.anchor[1] + placement.local[1],
       placement.anchor[2] + placement.local[2],
     )
-    const points = waypoints.map(
-      ([x, y, z]) => new THREE.Vector3(x - anchor.x, y - anchor.y, z - anchor.z),
+    const segments = splitTimedTrailAtPredictionBoundary(
+      waypoints,
+      craft.trajectoryCoverage?.predictionStartsJdTdb ??
+        Number.POSITIVE_INFINITY,
     )
+    const toLocalPoints = (points: typeof segments.actual) =>
+      points.map(
+        ([, x, y, z]) =>
+          new THREE.Vector3(x - anchor.x, y - anchor.y, z - anchor.z),
+      )
+    const actualPoints = toLocalPoints(segments.actual)
+    const predictedPoints = toLocalPoints(segments.predicted)
     const bright = new THREE.Color(craft.color)
-    const dim = bright.clone().multiplyScalar(0.08)
-    const colors = points.map((_, index) =>
-      dim.clone().lerp(bright, Math.pow(index / (points.length - 1), 1.5)),
+    const dim = bright.clone().multiplyScalar(
+      ACTUAL_TRAJECTORY_GRADIENT_START,
     )
-    return { anchor, points, colors }
+    const actualFirstJdTdb = segments.actual[0]?.[0] ?? 0
+    const actualLastJdTdb = segments.actual.at(-1)?.[0] ?? actualFirstJdTdb
+    const actualColors = segments.actual.map(([jdTdb]) =>
+      dim
+        .clone()
+        .lerp(
+          bright,
+          getActualTrajectoryGradientMix(
+            jdTdb,
+            actualFirstJdTdb,
+            actualLastJdTdb,
+          ),
+        ),
+    )
+    return {
+      anchor,
+      actual: { points: actualPoints, colors: actualColors },
+      predicted: { points: predictedPoints },
+    }
   }, [
     craft,
     orbitEpoch,
@@ -115,6 +209,8 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
     inclinationScale,
     planetScale,
     trueScale,
+    trajectory,
+    trailQuality,
   ])
 
   useFrame(({ camera }, delta) => {
@@ -124,13 +220,15 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
     // Nested groups: the anchor carries the large heliocentric offset and the
     // local orbit stays numerically small, avoiding float32 jitter for craft
     // hugging a planet at true scale.
-    const { anchor, local } = getSpacecraftPlacement(craft, simTimeRef.current, {
+    const placement = getSpacecraftPlacement(craft, simTimeRef.current, trajectory, {
       orbitScale,
       eccentricityScale,
       inclinationScale,
       planetScale,
       trueScale,
     })
+    if (!placement) return
+    const { anchor, local } = placement
     anchorGroup.position.set(anchor[0], anchor[1], anchor[2])
     localGroup.position.set(local[0], local[1], local[2])
 
@@ -145,6 +243,42 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
     scratchWorld.set(anchor[0] + local[0], anchor[1] + local[1], anchor[2] + local[2])
     const distance = camera.position.distanceTo(scratchWorld)
 
+    const trailCursor = trailCursorRef.current
+    if (trailCursor) {
+      trailCursor.visible = false
+      if (selected && trail && camera instanceof THREE.PerspectiveCamera) {
+        const cursor = getDeepProbeTrailCursorStateAtJd(
+          trajectory,
+          simTimeToJd(simTimeRef.current),
+          {
+            orbitScale,
+            inclinationScale,
+            trueScale,
+          },
+        )
+        if (cursor.visible && cursor.point) {
+          const [cursorX, cursorY, cursorZ] = cursor.point
+          trailCursor.position.set(
+            cursorX - trail.anchor.x,
+            cursorY - trail.anchor.y,
+            cursorZ - trail.anchor.z,
+          )
+          trailCursor.quaternion.copy(camera.quaternion)
+          cursorScratchWorld.set(cursorX, cursorY, cursorZ)
+          const cursorDistance = camera.position.distanceTo(cursorScratchWorld)
+          const worldPerPixel =
+            (2 *
+              cursorDistance *
+              Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) /
+            Math.max(1, size.height)
+          trailCursor.scale.setScalar(
+            worldPerPixel * getTrajectoryCursorDiameterPixels(size.height),
+          )
+          trailCursor.visible = true
+        }
+      }
+    }
+
     // A perspective-aware invisible target makes tiny true-scale craft easy
     // to pick at overview distance without enlarging their rendered markers.
     if (camera instanceof THREE.PerspectiveCamera) {
@@ -155,7 +289,7 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
         hitRef.current.scale.setScalar(Math.max(1, targetWorldRadius / sizes.hit))
       }
       if (locatorRef.current) {
-        const locatorSize = worldPerPixel * 20
+        const locatorSize = worldPerPixel * LOCATOR_PIXELS
         locatorRef.current.scale.set(locatorSize, locatorSize, 1)
       }
       if (visualProxyRef.current) {
@@ -163,9 +297,18 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
         // responds naturally to zoom. Pixel bounds only prevent selected craft
         // from vanishing and nearby unselected craft from covering a planet.
         const naturalPixels = proxyWorldSpan / worldPerPixel
+        const selectedMinPixels = model
+          ? SELECTED_PROXY_MIN_PIXELS
+          : SELECTED_MARKER_MIN_PIXELS
+        const selectedMaxPixels = model
+          ? SELECTED_PROXY_MAX_PIXELS
+          : SELECTED_MARKER_MAX_PIXELS
         const displayPixels = Math.max(
-          selected ? 24 : 0,
-          Math.min(selected ? 180 : 24, naturalPixels),
+          selected ? selectedMinPixels : 0,
+          Math.min(
+            selected ? selectedMaxPixels : UNSELECTED_PROXY_MAX_PIXELS,
+            naturalPixels,
+          ),
         )
         visualProxyRef.current.scale.setScalar(worldPerPixel * displayPixels)
         visualProxyRef.current.visible = displayPixels >= 0.75
@@ -205,28 +348,81 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
   const visualProxyMarker = (
     <mesh>
       <octahedronGeometry args={[0.5, 0]} />
-      <meshStandardMaterial
-        color={selected ? '#ffffff' : craft.color}
-        roughness={0.68}
-        metalness={0.22}
+      <meshBasicMaterial
+        color={selected ? '#d8e6ef' : craft.color}
+        transparent
+        opacity={0.88}
+        wireframe
+        toneMapped
         fog={false}
       />
     </mesh>
   )
 
+  // A Horizons craft has no meaningful fallback position. It enters the scene
+  // only after its cached samples are ready, already at the correct model time.
+  if (craft.trajectoryId && !trajectory) return null
+
+  const actualTrailStyle = getTrajectoryLineStyle('actual', selected)
+  const predictedTrailStyle = getTrajectoryLineStyle('predicted', selected)
+
   return (
     <>
       {trail && showOrbits ? (
         <group position={trail.anchor}>
-          <Line
-            points={trail.points}
-            vertexColors={trail.colors}
-            transparent
-            depthWrite={false}
-            opacity={selected ? 0.92 : 0.48}
-            lineWidth={selected ? 1.7 : 1}
-            dashed={false}
-          />
+          {trail.actual.points.length >= 2 ? (
+            <Line
+              points={trail.actual.points}
+              vertexColors={trail.actual.colors}
+              transparent
+              depthWrite={false}
+              opacity={actualTrailStyle.opacity}
+              lineWidth={actualTrailStyle.lineWidth}
+              dashed={actualTrailStyle.dashed}
+            />
+          ) : null}
+          {trail.predicted.points.length >= 2 ? (
+            <Line
+              points={trail.predicted.points}
+              color={craft.color}
+              transparent
+              depthWrite={false}
+              opacity={predictedTrailStyle.opacity}
+              lineWidth={predictedTrailStyle.lineWidth}
+              dashed={predictedTrailStyle.dashed}
+              dashScale={predictedTrailStyle.dashScale}
+              dashSize={predictedTrailStyle.dashSize}
+              gapSize={predictedTrailStyle.gapSize}
+            />
+          ) : null}
+          {selected ? (
+            <group ref={trailCursorRef} visible={false}>
+              <mesh renderOrder={24}>
+                <ringGeometry args={[0.32, 0.5, 24]} />
+                <meshBasicMaterial
+                  color="#dbeafe"
+                  transparent
+                  opacity={0.9}
+                  depthTest={false}
+                  depthWrite={false}
+                  fog={false}
+                  side={THREE.DoubleSide}
+                />
+              </mesh>
+              <mesh position={[0, 0, 0.001]} renderOrder={25}>
+                <circleGeometry args={[0.13, 18]} />
+                <meshBasicMaterial
+                  color={craft.color}
+                  transparent
+                  opacity={0.96}
+                  depthTest={false}
+                  depthWrite={false}
+                  fog={false}
+                  side={THREE.DoubleSide}
+                />
+              </mesh>
+            </group>
+          ) : null}
         </group>
       ) : null}
       <group ref={anchorRef}>
@@ -261,9 +457,14 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
               ) : (
                 proceduralMarker
               )}
-              <group ref={visualProxyRef}>
+              <group ref={visualProxyRef} scale={0}>
                 {selected && model ? (
-                  <CraftGlbModel url={model.url} fitSpan={1} fallback={visualProxyMarker} />
+                  <CraftGlbModel
+                    url={model.url}
+                    fitSpan={1}
+                    identification
+                    fallback={visualProxyMarker}
+                  />
                 ) : (
                   visualProxyMarker
                 )}
@@ -274,6 +475,7 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
               <CraftGlbModel
                 url={model.url}
                 fitRadius={stylizedModelRadius}
+                identification
                 fallback={proceduralMarker}
               />
             </group>
@@ -281,34 +483,21 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
             proceduralMarker
           )}
 
-          {trueScale ? (
-            !selected ? (
-              <sprite ref={locatorRef} scale={[0, 0, 1]} renderOrder={20}>
-                <spriteMaterial
-                  map={locator}
-                  color={craft.color}
-                  transparent
-                  opacity={0.72}
-                  depthTest={false}
-                  depthWrite={false}
-                  toneMapped={false}
-                  fog={false}
-                />
-              </sprite>
-            ) : null
-          ) : (
-            <sprite scale={[sizes.glow, sizes.glow, 1]}>
+          {!selected ? (
+            <sprite ref={locatorRef} scale={[0, 0, 1]} renderOrder={20}>
               <spriteMaterial
-                map={glow}
+                map={locator}
                 color={craft.color}
-                blending={THREE.AdditiveBlending}
                 transparent
-                opacity={selected && model ? 0.12 : selected ? 0.8 : 0.55}
+                opacity={0.72}
+                alphaTest={0.02}
+                depthTest={false}
                 depthWrite={false}
+                toneMapped
                 fog={false}
               />
             </sprite>
-          )}
+          ) : null}
 
           {showLabels ? (
             <Html
@@ -354,10 +543,30 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
 }
 
 export function SpacecraftFleet() {
-  const { showOrbits, orbitScale, inclinationScale, trueScale, simTime } = useSimulation()
+  const {
+    showOrbits,
+    orbitScale,
+    inclinationScale,
+    trueScale,
+    simTime,
+    selectedPlanetId,
+  } = useSimulation()
   const parker = SPACECRAFT.find((craft) => craft.id === 'parker')
   const visibleCraft = SPACECRAFT.filter((craft) => isCraftSceneVisible(craft, simTime))
   const parkerLaunched = parker ? isCraftLaunched(parker, simTime) : false
+  const idleTrajectoryIds = visibleCraft
+    .filter((craft) => craft.trajectoryId && craft.id !== selectedPlanetId)
+    .map((craft) => craft.trajectoryId!)
+  const idleQueueKey = idleTrajectoryIds.join('|')
+
+  useEffect(() => {
+    if (!idleQueueKey) return
+    const queuedIds = idleQueueKey.split('|') as TrajectoryId[]
+    queueTrajectories(queuedIds)
+    return () => {
+      for (const id of queuedIds) cancelQueuedTrajectory(id)
+    }
+  }, [idleQueueKey])
 
   return (
     <group>
@@ -367,6 +576,9 @@ export function SpacecraftFleet() {
           eccentricity={parker.eccentricity ?? 0}
           inclination={(parker.inclination ?? 0) * (trueScale ? 1 : inclinationScale)}
           color={parker.color}
+          active={selectedPlanetId === parker.id}
+          lodMaxSegments={PARKER_ORBIT_MAX_SEGMENTS}
+          semantic="osculating"
         />
       ) : null}
       {visibleCraft.map((craft) => (

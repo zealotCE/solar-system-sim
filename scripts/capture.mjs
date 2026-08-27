@@ -1,40 +1,46 @@
-// Dev helper: capture screenshots of the running dev server, optionally
-// clicking through UI first. Reuses the Playwright-cached headless shell.
+// Dev helper: capture screenshots of the running dev or preview server,
+// optionally clicking through UI first.
 //
 //   node scripts/capture.mjs out.png [action ...]
 //
-// Actions: click:<text> | wait:<ms> | wheel:<deltaY> |
+// Actions: click:<text> | wait:<ms> | wheel:<deltaY> | drag:<dx>:<dy> |
 //          assert:<visible text> | assert-not:<visible text>
-import { existsSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { writeFileSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 
 const [, , outPath = 'preview.png', ...actions] = process.argv
-
-function findHeadlessShell() {
-  const root = join(homedir(), 'Library/Caches/ms-playwright')
-  const candidates = [
-    'chromium_headless_shell-1217/chrome-headless-shell-mac-arm64/chrome-headless-shell',
-    'chromium-1217/chrome-mac-arm64/Chromium.app/Contents/MacOS/Chromium',
-  ]
-  for (const candidate of candidates) {
-    const full = join(root, candidate)
-    if (existsSync(full)) return full
-  }
-  throw new Error('No cached Chromium found under ' + root)
-}
+const captureUrl = process.env.CAPTURE_URL ?? 'http://localhost:4317/'
+const parsedCaptureUrl = new URL(captureUrl)
+const visualTestScene = parsedCaptureUrl.searchParams.has('visual-test')
+  ? Object.fromEntries(new URLSearchParams(parsedCaptureUrl.hash.slice(1)))
+  : null
 
 const browser = await chromium.launch({
-  executablePath: findHeadlessShell(),
-  args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  args: [
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+    '--force-color-profile=srgb',
+  ],
 })
 
 try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
-  await page.goto(process.env.CAPTURE_URL ?? 'http://localhost:4317/', {
+  await page.goto(captureUrl, {
     waitUntil: 'domcontentloaded',
   })
+  if (visualTestScene?.target && visualTestScene.date) {
+    await page.waitForFunction(
+      ({ date, target }) =>
+        document.documentElement.dataset.visualTestDate === date &&
+        document.documentElement.dataset.visualTestState === 'ready' &&
+        document.documentElement.dataset.visualTestTarget === target &&
+        document.documentElement.dataset.visualTestFrame === 'ready',
+      { date: visualTestScene.date, target: visualTestScene.target },
+      { timeout: 90_000 },
+    )
+    await page.waitForLoadState('networkidle', { timeout: 45_000 })
+  }
   await page.waitForTimeout(4500)
   // Real input wakes the compositor: without it the headless shell can leave
   // the page throttled and the WebGL requestAnimationFrame loop never starts.
@@ -61,6 +67,13 @@ try {
       await page.mouse.move(700, 400)
       await page.mouse.wheel(0, Number(value) || 500)
       await page.waitForTimeout(700)
+    } else if (kind === 'drag') {
+      const [deltaX = 0, deltaY = 0] = rest.map(Number)
+      await page.mouse.move(700, 400)
+      await page.mouse.down()
+      await page.mouse.move(700 + deltaX, 400 + deltaY, { steps: 24 })
+      await page.mouse.up()
+      await page.waitForTimeout(900)
     } else if (kind === 'wait') {
       await page.waitForTimeout(Number(value) || 1000)
     } else if (kind === 'assert' || kind === 'assert-not') {

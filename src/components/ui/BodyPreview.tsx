@@ -332,7 +332,11 @@ function PreviewBody({ id }: { id: string }) {
       <mesh ref={spinRef}>
         <sphereGeometry args={[radius, 64, 64]} />
         {id === 'sun' ? (
-          <meshBasicMaterial map={texture} color="#ffe9bd" />
+          <meshBasicMaterial
+            map={texture}
+            color={isPhoto ? '#d99162' : '#e6a052'}
+            toneMapped={false}
+          />
         ) : (
           <meshStandardMaterial
             map={texture}
@@ -350,7 +354,7 @@ function PreviewBody({ id }: { id: string }) {
         <meshBasicMaterial
           color={spec.color}
           transparent
-          opacity={id === 'sun' ? 0.16 : 0.1}
+          opacity={id === 'sun' ? 0.08 : 0.1}
           side={THREE.BackSide}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
@@ -364,7 +368,7 @@ function PreviewBody({ id }: { id: string }) {
             blending={THREE.AdditiveBlending}
             transparent
             depthWrite={false}
-            opacity={0.85}
+            opacity={0.48}
           />
         </sprite>
       ) : null}

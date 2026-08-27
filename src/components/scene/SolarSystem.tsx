@@ -24,8 +24,21 @@ import {
   getMinorBodyVisualRadius,
   type MinorBodyData,
 } from '@/data/minorBodies'
-import { getSpacecraftById, getSpacecraftPosition } from '@/data/spacecraft'
+import {
+  getCraftFocusRadius,
+  getSpacecraftById,
+  getSpacecraftPosition,
+} from '@/data/spacecraft'
+import { useScreenSpaceLod } from '@/hooks/useScreenSpaceLod'
 import { useSimulation } from '@/hooks/useSimulation'
+import { useTrajectory } from '@/hooks/useTrajectory'
+import {
+  getClosedOrbitSegmentTiers,
+  getClosedOrbitTransitionThresholds,
+  getMinorBodyOrbitMaxSegments,
+  getPlanetOrbitMaxSegments,
+  getPolylineBoundingRadius,
+} from '@/lib/screenSpaceLod'
 import { SIM_TIME_MAX_YEARS, SIM_TIME_MIN_YEARS } from '@/lib/utils'
 import { AsteroidBelt } from './AsteroidBelt'
 import { EclipticGrid } from './EclipticGrid'
@@ -66,12 +79,8 @@ function getVisualRadius(id: string, trueScale: boolean): number {
   const moonHit = findMoonById(id)
   if (moonHit) return getMoonVisualRadius(moonHit.moon, trueScale)
   const craft = getSpacecraftById(id)
-  if (craft) {
-    // Keep focus sizing usable without turning a spacecraft into a planet-sized
-    // object; its screen-light marker remains visible at the focused distance.
-    if (craft.kind === 'deep-probe') return trueScale ? 0.012 : 0.55
-    return trueScale ? 0.0008 : 0.2
-  }
+  // This is the non-physical framing radius, not the metre-scale craft mesh.
+  if (craft) return getCraftFocusRadius(craft, trueScale)
   const minorBody = getMinorBodyById(id)
   if (minorBody) return getMinorBodyVisualRadius(minorBody, trueScale)
   const planet = PLANETS.find((item) => item.id === id)
@@ -95,12 +104,16 @@ function CameraRig() {
     autoRotate,
     trueScale,
   } = useSimulation()
+  const selectedCraft = getSpacecraftById(selectedPlanetId)
+  const selectedTrajectory = useTrajectory(selectedCraft?.trajectoryId ?? null)
+  const selectedTrajectorySamples = selectedTrajectory?.samples ?? null
   const followTarget = useRef(new THREE.Vector3())
   const focusAnim = useRef({ nonce: 0, active: false })
   const offsetDir = useRef(new THREE.Vector3())
   const trackedPosition = useRef(new THREE.Vector3())
   const followDelta = useRef(new THREE.Vector3())
   const trackedTargetKey = useRef<string | null>(null)
+  const pendingTrajectoryTarget = useRef<string | null>(null)
 
   useFrame((_, delta) => {
     const controls = controlsRef.current
@@ -119,6 +132,12 @@ function CameraRig() {
     }
 
     if (followPlanet && selectedPlanetId) {
+      if (
+        pendingTrajectoryTarget.current &&
+        pendingTrajectoryTarget.current !== selectedPlanetId
+      ) {
+        pendingTrajectoryTarget.current = null
+      }
       const moonHit = findMoonById(selectedPlanetId)
       if (selectedPlanetId === 'sun') {
         followTarget.current.set(0, 0, 0)
@@ -131,15 +150,26 @@ function CameraRig() {
         })
         followTarget.current.set(x, y, z)
       } else {
-        const craft = getSpacecraftById(selectedPlanetId)
+        const craft = selectedCraft
         if (craft) {
-          const [x, y, z] = getSpacecraftPosition(craft, simTimeRef.current, {
-            orbitScale,
-            eccentricityScale,
-            inclinationScale,
-            planetScale,
-            trueScale,
-          })
+          const position = getSpacecraftPosition(
+            craft,
+            simTimeRef.current,
+            selectedTrajectorySamples,
+            {
+              orbitScale,
+              eccentricityScale,
+              inclinationScale,
+              planetScale,
+              trueScale,
+            },
+          )
+          if (!position) {
+            pendingTrajectoryTarget.current = craft.id
+            trackedTargetKey.current = null
+            return
+          }
+          const [x, y, z] = position
           followTarget.current.set(x, y, z)
         } else {
           const minorBody = getMinorBodyById(selectedPlanetId)
@@ -168,6 +198,13 @@ function CameraRig() {
       // rotating toward a fast-moving target makes it escape the viewport at
       // high simulation speeds, especially for Mercury in true scale.
       const targetKey = `${selectedPlanetId}:${trueScale}`
+      if (pendingTrajectoryTarget.current === selectedPlanetId) {
+        // Preserve the current camera-to-target offset when a delayed mission
+        // becomes available; the pending focus flight then resumes smoothly.
+        followDelta.current.copy(followTarget.current).sub(controls.target)
+        camera.position.add(followDelta.current)
+        pendingTrajectoryTarget.current = null
+      }
       if (trackedTargetKey.current === targetKey) {
         followDelta.current.copy(followTarget.current).sub(trackedPosition.current)
         camera.position.add(followDelta.current)
@@ -208,6 +245,7 @@ function CameraRig() {
       }
     } else {
       trackedTargetKey.current = null
+      pendingTrajectoryTarget.current = null
     }
   })
 
@@ -227,7 +265,7 @@ function CameraRig() {
       enableDamping
       dampingFactor={0.08}
       minDistance={minDistance}
-      maxDistance={trueScale ? 560 : 210}
+      maxDistance={trueScale ? 900 : 210}
       enablePan={false}
       autoRotate={autoRotate && !followPlanet}
       autoRotateSpeed={0.22}
@@ -255,6 +293,44 @@ function PlanetOrbit({ planet }: { planet: PlanetData }) {
     selectedPlanetId,
     orbitEpoch,
   } = useSimulation()
+  const selected = selectedPlanetId === planet.id
+  const lodGuide = useMemo(
+    () =>
+      getPlanetOrbitPoints(
+        planet,
+        {
+          orbitScale,
+          eccentricityScale,
+          inclinationScale,
+          trueScale,
+        },
+        64,
+        orbitEpoch,
+      ),
+    [planet, orbitScale, eccentricityScale, inclinationScale, trueScale, orbitEpoch],
+  )
+  const maxSegments = getPlanetOrbitMaxSegments(planet.id)
+  const segmentTiers = useMemo(
+    () => getClosedOrbitSegmentTiers(maxSegments),
+    [maxSegments],
+  )
+  const transitionThresholds = useMemo(
+    () => getClosedOrbitTransitionThresholds(segmentTiers),
+    [segmentTiers],
+  )
+  const lodWorldError = useMemo(
+    () => getPolylineBoundingRadius(lodGuide),
+    [lodGuide],
+  )
+  const tierIndex = useScreenSpaceLod({
+    points: lodGuide,
+    thresholds: transitionThresholds,
+    worldError: lodWorldError,
+    initialIndex: selected ? segmentTiers.length - 1 : 0,
+    maxIndex: segmentTiers.length - 1,
+    forceMax: selected,
+  })
+  const segments = segmentTiers[tierIndex]
 
   const orbit = useMemo(
     () => {
@@ -268,7 +344,7 @@ function PlanetOrbit({ planet }: { planet: PlanetData }) {
       const points = getPlanetOrbitPoints(
         planet,
         modifiers,
-        trueScale ? (planet.id === 'pluto' ? 16384 : 2048) : 256,
+        segments,
         orbitEpoch,
       ).map(
         ([x, y, z]) =>
@@ -276,14 +352,23 @@ function PlanetOrbit({ planet }: { planet: PlanetData }) {
       )
       return { anchor, points }
     },
-    [planet, orbitScale, eccentricityScale, inclinationScale, trueScale, orbitEpoch],
+    [
+      planet,
+      orbitScale,
+      eccentricityScale,
+      inclinationScale,
+      trueScale,
+      orbitEpoch,
+      segments,
+    ],
   )
   return (
     <group position={orbit.anchor}>
       <OrbitLine
         customPoints={orbit.points}
         color={planet.color}
-        active={selectedPlanetId === planet.id}
+        active={selected}
+        semantic="osculating"
       />
     </group>
   )
@@ -291,6 +376,33 @@ function PlanetOrbit({ planet }: { planet: PlanetData }) {
 
 function MinorBodyOrbit({ body }: { body: MinorBodyData }) {
   const { orbitScale, trueScale, selectedPlanetId, orbitEpoch } = useSimulation()
+  const selected = selectedPlanetId === body.id
+  const lodGuide = useMemo(
+    () => getMinorBodyOrbitPoints(body, trueScale, orbitScale, 64),
+    [body, orbitScale, trueScale],
+  )
+  const maxSegments = getMinorBodyOrbitMaxSegments(body.id)
+  const segmentTiers = useMemo(
+    () => getClosedOrbitSegmentTiers(maxSegments),
+    [maxSegments],
+  )
+  const transitionThresholds = useMemo(
+    () => getClosedOrbitTransitionThresholds(segmentTiers),
+    [segmentTiers],
+  )
+  const lodWorldError = useMemo(
+    () => getPolylineBoundingRadius(lodGuide),
+    [lodGuide],
+  )
+  const tierIndex = useScreenSpaceLod({
+    points: lodGuide,
+    thresholds: transitionThresholds,
+    worldError: lodWorldError,
+    initialIndex: selected ? segmentTiers.length - 1 : 0,
+    maxIndex: segmentTiers.length - 1,
+    forceMax: selected,
+  })
+  const segments = segmentTiers[tierIndex]
   const orbit = useMemo(
     () => {
       const anchor = getMinorBodyScenePosition(body, orbitEpoch, trueScale, orbitScale)
@@ -298,21 +410,22 @@ function MinorBodyOrbit({ body }: { body: MinorBodyData }) {
         body,
         trueScale,
         orbitScale,
-        trueScale ? 1536 : 320,
+        segments,
       ).map(
         ([x, y, z]) =>
           [x - anchor[0], y - anchor[1], z - anchor[2]] as [number, number, number],
       )
       return { anchor, points }
     },
-    [body, orbitScale, trueScale, orbitEpoch],
+    [body, orbitScale, trueScale, orbitEpoch, segments],
   )
   return (
     <group position={orbit.anchor}>
       <OrbitLine
         customPoints={orbit.points}
         color={body.color}
-        active={selectedPlanetId === body.id}
+        active={selected}
+        semantic="osculating"
       />
     </group>
   )

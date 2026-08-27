@@ -1,30 +1,35 @@
+[中文](README.md) | [English](README.en.md)
+
 # 太阳系模拟
 
 具有未来观测台视觉的交互式三维太阳系：八大行星与冥王星、26 颗天然卫星、9 个重点小天体/彗星、18 个著名人类航天器、小行星带、真实星历驱动的位置与时间机器（1950–2050），支持严格真实比例和纯中文 / 双语 / 纯英文界面。位置与时间来自打包的 JPL 公开数据，用于模型展示，不代表实时测量。
 
 ## 界面预览
 
-![太阳系总览与目标索引](shots/v1.2-target-index.png)
+![保留表面细节与日冕层次的太阳贴图](shots/v1.3-sun-texture.png)
 
 <p align="center">
-  <img src="shots/v1.2-ceres-official.png" width="49%" alt="谷神星官方模型与科学档案" />
-  <img src="shots/v1.2-europa-official.png" width="49%" alt="Europa Clipper 任务档案与历史节点" />
+  <img src="shots/v1.3-halley-perihelion.png" width="49%" alt="1986 年 2 月 9 日近日点的平滑哈雷彗星轨道" />
+  <img src="shots/v1.3-europa-clipper-trail.png" width="49%" alt="2030 年 4 月 11 日 Europa Clipper 平滑语义航迹" />
 </p>
 
 <p align="center">
-  <img src="shots/v1.2-history-true-scale.png" width="49%" alt="历史任务真实比例回放" />
-  <img src="shots/v1.2-english-bennu.png" width="49%" alt="贝努档案与纯英文界面" />
+  <img src="shots/v1.3-true-scale-craft.png" width="49%" alt="真实比例下选中航天器的有界识别模型与固定准心" />
+  <img src="shots/v1.3-trajectory-legend.png" width="49%" alt="已飞行、预测、模拟时刻与密切轨道图例" />
 </p>
 
-<p align="center"><sub>目标搜索与总览 · NASA 官方模型档案 · 历史任务回放 · 纯英文模式</sub></p>
+<p align="center"><sub>纹理太阳 · 平滑哈雷轨道 · Europa Clipper 语义航迹 · 真实比例航天器 · 双语轨迹图例</sub></p>
 
 ## 功能
 
 - **真实星历**：行星角位置全时段采用 JPL「Approximate Positions of the Major Planets」开普勒根数 + 世纪变率（1800–2050 有效，误差远小于屏幕像素）；默认艺术化模式仅压缩径向距离，行星方位与真实天空一致
-- **严格真实比例模式**：一键切换，半径与轨道共用同一 km→场景映射，无任何物理体积放大（太阳半径约为地球轨道的 1/215）；航天器实体也按公开最大展开跨度换算，另叠加随镜头缩放并设可读上下限的识别模型，准心只标记未选中目标
+- **严格真实比例模式**：一键切换，半径与轨道共用同一 km→场景映射，无任何物理体积放大（太阳半径约为地球轨道的 1/215）；航天器实体也按公开最大展开跨度换算。选中官方模型使用 112–156 px 的有界中性 matcap 识别层，未选中目标使用固定 20 px 准心；两者均不依赖局部点光、自发光或大面积 Bloom 光晕
 - **时间机器（1950–2050）**：时间可倒流，自定义日历支持日/月/年份分页选择、「今天」按钮同步真实当前日期；10 组任务故事可从任务页或航天器档案触发，回放会自动暂停、切换真实比例并聚焦历史目标，避免艺术化放大造成近飞穿模
-- **十二个深空任务真实轨迹**：旅行者 1/2 号、先驱者 10 号、新视野号，以及卡西尼、伽利略、黎明、罗塞塔、OSIRIS-REx/APEX、Lucy、Psyche、Europa Clipper 使用打包 JPL Horizons 状态矢量（30 天采样 + 三次 Hermite 插值）；航天器仅在发射后出现，已撞毁/受控进入天体的任务在终止日后不再渲染实体，档案仍可查阅
-- **NASA 官方 3D 模型**：在原有旅行者、先驱者、新视野、朱诺、帕克、韦伯、哈勃、国际空间站基础上，新增卡西尼、伽利略、黎明、罗塞塔、OSIRIS-REx、Europa Clipper，以及谷神星、灶神星、贝努官方 GLB；真实比例下选中航天器仍显示屏幕尺度的可旋转识别模型；Europa Clipper 的 34.05 MiB 原始文件经 Meshopt/WebP 优化为约 2.6 MiB 以符合 Pages 限制
+- **十二个深空任务真实轨迹**：旅行者 1/2 号、先驱者 10 号、新视野号，以及卡西尼、伽利略、黎明、罗塞塔、OSIRIS-REx/APEX、Lucy、Psyche、Europa Clipper 使用打包 JPL Horizons 状态矢量；巡航段按 30 天、事件窗按 1 天、关键近飞窗按 6 小时混合采样，再以位置 + 速度 Hermite 曲线平滑重建
+- **哈希星历按需加载**：首包只含轻量注册索引；每个任务使用内容哈希 JSON，选中目标、故事与深链优先加载，其余已发射任务在浏览器空闲时串行渐进加载。渲染热路径读取同步缓存，不会把单体轨迹包塞进主 JavaScript
+- **轨迹语义**：任务来源边界固定区分已飞行/已知的实线渐变与预测/传播的低透明虚线；模拟日期只移动独立的小圆时间光标，不会改写数据性质。行星、卫星、小天体和帕克的闭合线统一表示当前历元的瞬时密切轨道
+- **屏幕空间 LOD**：闭合轨道按投影弦高在 128–16384 顶点间分级，Horizons 航迹按 overview/medium/focus 精度自适应细分；每 12 帧评估并使用 0.92/1.08 滞回，远景更轻、近景和选中目标仍保持平滑
+- **NASA 官方 3D 模型**：在原有旅行者、先驱者、新视野、朱诺、帕克、韦伯、哈勃、国际空间站基础上，新增卡西尼、伽利略、黎明、罗塞塔、OSIRIS-REx、Europa Clipper，以及谷神星、灶神星、贝努官方 GLB；Europa Clipper 的 34.05 MiB 原始文件经 Meshopt/WebP 优化为约 2.6 MiB 以符合 Pages 限制
 - **小天体与彗星**：谷神星、灶神星、贝努、67P、哈雷彗星、欧律巴忒斯、灵神星、阿波菲斯和阿罗科斯均采用 JPL SBDB 离线轨道根数，具备真实空间方位、轨道、搜索、实时光时和扩展科学档案
 - **目标搜索**：目标列表支持中英文模糊搜索，桌面端按 `/` 直达
 - **实时读数**：档案面板按当前模型时刻实时计算距太阳/距地球（AU + km）与单向光时（NASA Eyes 风格）
@@ -35,7 +40,7 @@
 - 火星与木星之间约 2600 颗实例化小行星
 - 底部主控台 + 独立次级面板：目标列表 / 目标档案 / 任务故事 / 模拟参数，互不干扰
 - 点击目标即自动锁定跟随，镜头平滑飞近（Star Walk 式观测）
-- 暂停 / 播放，时间倍率 0.01x–1000x；快捷键：空格暂停、R 重置相机、/ 搜索、Esc 关闭面板
+- 默认时间倍率为 1×（约每秒推进 1 个地球日），可在 0.01×–1000× 间调节；快捷键：空格暂停、R 重置相机、/ 搜索、Esc 关闭面板
 - 真实贴图可一键切换为轻量程序化贴图，兼顾低配设备
 - 沉浸、观测、纯净三套场景预设，支持黄道网格、航天器开关与自动巡航；真实比例下物理滑杆自动锁定为 1×
 - 桌面观测台与移动端抽屉自适应布局，全部界面支持纯中文 / 双语 / 纯英文三模式，选择会保存在浏览器
@@ -84,7 +89,7 @@ docker run -d --name solar-system-sim -p 4317:80 --restart unless-stopped solar-
 
 ## Cloudflare Pages
 
-项目是纯静态 Vite 应用，已包含 Pages 配置、缓存规则和单文件 25 MiB 上限检查：
+项目是纯静态 Vite 应用，已包含 Pages 配置、缓存规则、单文件 25 MiB 上限与主 JavaScript 3 MiB 启动预算检查：
 
 ```bash
 npm ci
@@ -93,12 +98,14 @@ npm run build:pages
 
 Cloudflare Pages 的 Git 集成设置：
 
-- Framework preset：`Vite`
+- Production branch：`main`
+- Framework preset：`None / 无`（新版控制台不再提供通用 Vite 预设；不要选择 VitePress）
 - Build command：`npm run build:pages`
 - Build output directory：`dist`
+- Root directory：留空
 - Node.js：仓库 `.node-version` 固定为 `22`
 
-`public/_headers` 会让带哈希的 Vite 资源长期不可变缓存，模型和贴图分别使用可重新验证的缓存周期；HTML 始终重新验证。应用使用井号深链，不需要 SPA 回退规则，也不会把缺失的 GLB 误返回为 `index.html`。直接上传可运行 `npx wrangler pages deploy dist`，`wrangler.jsonc` 已声明输出目录。
+Cloudflare 会自动读取 `wrangler.jsonc` 中的 `pages_build_output_dir: "./dist"`。如果日志显示 `/bin/sh: pm: not found`，说明构建命令漏写了开头的 `n`，应改回完整的 `npm run build:pages`。`public/_headers` 会让带哈希的 Vite 资源和 `/ephemerides/<mission>-<hash>.json` 使用一年 immutable 缓存，模型和贴图分别使用可重新验证的缓存周期，HTML 始终重新验证。构建检查还会确认 12 个星历资产仍在主包外且主 JS 不含轨迹样本指纹。应用使用井号深链，不需要 SPA 回退规则，也不会把缺失的 GLB 误返回为 `index.html`。本项目依赖 Cloudflare Pages Git 集成，日常交付无需手动部署。
 
 ## 操作
 
@@ -123,9 +130,32 @@ Cloudflare Pages 的 Git 集成设置：
 
 Vite + React + TypeScript、@react-three/fiber、@react-three/drei、@react-three/postprocessing、Tailwind CSS、shadcn/ui 风格组件。
 
-## 开发辅助
+## 验证与开发辅助
 
-无头截图验证（复用 Playwright 缓存的 Chromium，先启动 dev 服务器）：
+完整本地验收（oxlint、TypeScript/Pages 构建、Cloudflare 预算、全部轨迹与数值校验，以及 3 个 Playwright/SwiftShader 视觉场景）：
+
+```bash
+npm run verify
+```
+
+也可单独运行：
+
+```bash
+npm run lint
+npm run build:pages
+npm run validate:data
+npm run test:visual
+```
+
+视觉回归固定 DPR=1、UTC、随机种子、模拟日期与动画状态，保留 MSAA/Bloom，只比较 WebGL canvas，场景为纹理太阳、1986-02-09 哈雷近日点和 2030-04-11 Europa Clipper。更新基线前必须人工检查三张图片：
+
+```bash
+npm run test:visual:update
+```
+
+`.github/workflows/visual.yml` 在 pull request 与 `main` push 上使用 Node 22、固定 Playwright Chromium 和 SwiftShader，先运行 lint、全部数据校验与 `build:pages`，再比较三张基线；失败时上传 actual/diff、trace 和 HTML 报告。
+
+全界面无头截图（使用当前 Playwright Chromium；先启动 dev 或 preview 服务器）：
 
 ```bash
 node scripts/capture.mjs out.png "click:目标" "wait:2000"
@@ -139,7 +169,7 @@ CAPTURE_URL='http://localhost:4317/#target=earth&scale=true' node scripts/captur
 
 ### JPL Horizons 离线轨迹包
 
-浏览器不会请求 Horizons。`src/data/horizonsTrajectories.ts` 是已打包的太阳中心、几何（未作光行时/像差修正）、ICRF 参考平面/参考系、TDB、AU/AU·day⁻¹ VECTORS 数据，30 天间隔：
+浏览器不会直接请求 Horizons。首包只包含 `src/data/horizonsTrajectoryIndex.ts`；每个任务的太阳中心、几何（未作光行时/像差修正）、ICRF、TDB、AU/AU·day⁻¹ VECTORS 数据按需从 `public/ephemerides/<mission>-<hash>.json` 载入并同步缓存：
 
 | 探测器 | COMMAND | 覆盖（TDB） |
 | --- | --- | --- |
@@ -158,12 +188,11 @@ CAPTURE_URL='http://localhost:4317/#target=earth&scale=true' node scripts/captur
 
 精确 API 查询、原始响应 SHA-256 和采样范围记录于 `src/data/horizons-provenance.json`。
 
-场景在相邻样本间用位置 + 速度做三次 Hermite 插值（飞掠弧段仍然平滑），渲染时转入 J2000 黄道坐标；风格化模式仅为显示压缩径向距离，真实比例模式按 AU 直映射（超过 192 AU 的星际探测器钳制显示半径，其余天体严格同比例）。覆盖范围以外钳制在端点，绝不静默外推。它们是 30 天采样的可视化轨迹，不应作为导航、近距离飞掠或实时运营用途。重新抓取（需要网络）、离线完整性检查与星历数值校验：
+场景在 30 天巡航、1 天事件窗和 6 小时近飞窗的相邻样本间用位置 + 速度做三次 Hermite 插值，并依据映射后的实际曲率、弦偏差和端点切线递归细分；风格化模式仅压缩径向距离，真实比例模式全部按 AU 直映射，不再对星际探测器设置会产生折角的硬距离上限。来源元数据给出实际数据截止点和预测起点；模拟时间光标与该固定边界彼此独立。覆盖范围以外钳制在端点，绝不静默外推。这些状态矢量重建仅用于可视化，不应作为导航或实时运营数据。重新抓取（需要网络）、离线完整性检查与全部数据校验：
 
 ```bash
 node scripts/fetch-horizons-trajectories.mjs
-node scripts/validate-horizons-trajectories.mjs
-npx esbuild scripts/validate-ephemeris.ts --bundle --format=esm --platform=node --outfile=.tmp-validate.mjs && node .tmp-validate.mjs && rm .tmp-validate.mjs
+npm run validate:data
 ```
 
 ## 素材来源

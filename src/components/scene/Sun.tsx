@@ -7,6 +7,7 @@ import { SUN, getSunVisualRadius } from '@/data/planets'
 import { getGlowTexture } from '@/lib/planetTextures'
 import { useBodySurface } from '@/lib/textureAssets'
 import { useSimulation } from '@/hooks/useSimulation'
+import { isVisualTestMode, markVisualTestFrameReady } from '@/lib/visualTest'
 
 export function Sun() {
   const visualRef = useRef<THREE.Group>(null)
@@ -28,13 +29,16 @@ export function Sun() {
   const { texture, isPhoto } = useBodySurface(SUN.id, 'star', SUN.color, usePhotoTextures)
   const glow = useMemo(() => getGlowTexture(), [])
   const radius = getSunVisualRadius(trueScale)
+  const freezeAnimation = isVisualTestMode()
 
   useFrame(({ clock, camera }) => {
     if (!coreRef.current || !visualRef.current) return
     coreRef.current.rotation.y = (simTimeRef.current * 365.25 * Math.PI * 2) / SUN.rotationPeriod
     const selected = selectedPlanetId === SUN.id
     const targetScale = planetScale * (selected && !trueScale ? 1.045 : 1)
-    const nextScale = THREE.MathUtils.lerp(visualRef.current.scale.x, targetScale, 0.075)
+    const nextScale = freezeAnimation
+      ? targetScale
+      : THREE.MathUtils.lerp(visualRef.current.scale.x, targetScale, 0.075)
     visualRef.current.scale.setScalar(nextScale)
 
     let worldPerPixel = 0
@@ -45,7 +49,8 @@ export function Sun() {
     }
 
     if (glowRef.current) {
-      const pulse = 1 + Math.sin(clock.elapsedTime * 0.72) * 0.025
+      const pulseTime = freezeAnimation ? 0 : clock.elapsedTime
+      const pulse = 1 + Math.sin(pulseTime * 0.72) * 0.025
       // The physically-sized true-scale Sun is sub-pixel from the overview;
       // keep its glow at a minimum apparent size so the star stays findable.
       const glowScale = trueScale
@@ -57,6 +62,7 @@ export function Sun() {
     if (hitRef.current) {
       hitRef.current.scale.setScalar(Math.max(radius * 1.15, worldPerPixel * 13))
     }
+    if (freezeAnimation) markVisualTestFrameReady()
   })
 
   const selected = selectedPlanetId === SUN.id
@@ -96,34 +102,17 @@ export function Sun() {
           }}
         >
           <sphereGeometry args={[radius, 80, 80]} />
-          {isPhoto ? (
-            <meshStandardMaterial
-              map={texture}
-              color="#ffffff"
-              emissive="#ffb347"
-              emissiveMap={texture}
-              emissiveIntensity={selected ? 1.5 : 1.15}
-              transparent={false}
-              opacity={1}
-              depthTest
-              depthWrite
-              roughness={0.4}
-              metalness={0}
-            />
-          ) : (
-            <meshStandardMaterial
-              map={texture}
-              color={SUN.color}
-              emissive={SUN.emissive}
-              emissiveIntensity={selected ? 2.05 : 1.55}
-              transparent={false}
-              opacity={1}
-              depthTest
-              depthWrite
-              roughness={0.32}
-              metalness={0}
-            />
-          )}
+          {/* Keep the photosphere below the bloom-clipping range. The separate
+              corona supplies luminosity without flattening surface granulation. */}
+          <meshBasicMaterial
+            map={texture}
+            color={isPhoto ? '#d99162' : '#e6a052'}
+            toneMapped={false}
+            transparent={false}
+            opacity={1}
+            depthTest
+            depthWrite
+          />
         </mesh>
 
         <mesh scale={1.065}>
@@ -131,7 +120,7 @@ export function Sun() {
           <meshBasicMaterial
             color="#ffb14a"
             transparent
-            opacity={0.26}
+            opacity={0.14}
             side={THREE.BackSide}
             blending={THREE.AdditiveBlending}
           />
@@ -143,7 +132,7 @@ export function Sun() {
             blending={THREE.AdditiveBlending}
             transparent
             depthWrite={false}
-            opacity={Math.min(0.72, 0.4 + bloomStrength * 0.1)}
+            opacity={Math.min(0.54, 0.28 + bloomStrength * 0.08)}
           />
         </sprite>
 

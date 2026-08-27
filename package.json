@@ -1,15 +1,24 @@
 {
   "name": "solar-system-sim",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview --port 4317",
+    "test:visual": "playwright test --config playwright.config.ts",
+    "test:visual:update": "npm run test:visual -- --update-snapshots",
+    "validate:horizons": "node scripts/validate-horizons-trajectories.mjs",
+    "validate:trajectory-registry": "npx esbuild scripts/validate-trajectory-registry.ts --bundle --format=esm --platform=node --outfile=.tmp-validate-trajectory-registry.mjs && node .tmp-validate-trajectory-registry.mjs && rm .tmp-validate-trajectory-registry.mjs",
+    "validate:lod": "npx esbuild scripts/validate-screen-space-lod.ts --bundle --format=esm --platform=node --outfile=.tmp-validate-lod.mjs && node .tmp-validate-lod.mjs && rm .tmp-validate-lod.mjs",
+    "validate:trajectory-semantics": "npx esbuild scripts/validate-trajectory-semantics.ts --bundle --format=esm --platform=node --outfile=.tmp-validate-trajectory-semantics.mjs && node .tmp-validate-trajectory-semantics.mjs && rm .tmp-validate-trajectory-semantics.mjs",
+    "validate:ephemeris": "npx esbuild scripts/validate-ephemeris.ts --bundle --format=esm --platform=node --outfile=.tmp-validate-ephemeris.mjs && node .tmp-validate-ephemeris.mjs && rm .tmp-validate-ephemeris.mjs",
+    "validate:data": "npm run validate:horizons && npm run validate:trajectory-registry && npm run validate:lod && npm run validate:trajectory-semantics && npm run validate:ephemeris",
     "validate:pages": "node scripts/validate-cloudflare-assets.mjs",
-    "build:pages": "npm run build && npm run validate:pages"
+    "build:pages": "npm run build && npm run validate:pages",
+    "verify": "npm run lint && npm run build:pages && npm run validate:data && npm run test:visual"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
@@ -28,12 +37,14 @@
     "three": "^0.185.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^6.1.0",
+    "esbuild": "^0.28.2",
     "oxlint": "^1.79.0",
     "playwright-core": "^1.62.1",
     "tailwindcss": "^4.3.3",

@@ -293,8 +293,18 @@ function positionFromMeanAnomaly(
   body: MinorBodyData,
   meanAnomaly: number,
 ): [number, number, number] {
+  return positionFromEccentricAnomaly(
+    body,
+    solveEccentricAnomaly(meanAnomaly, body.orbit.eccentricity),
+  )
+}
+
+function positionFromEccentricAnomaly(
+  body: MinorBodyData,
+  eccentricAnomaly: number,
+): [number, number, number] {
   const { semiMajorAxisAu: a, eccentricity: e } = body.orbit
-  const E = solveEccentricAnomaly(meanAnomaly, e)
+  const E = eccentricAnomaly
   const planeX = a * (Math.cos(E) - e)
   const planeY = a * Math.sqrt(1 - e * e) * Math.sin(E)
   const node = body.orbit.ascendingNodeDeg * DEG
@@ -349,7 +359,13 @@ export function getMinorBodyOrbitPoints(
   segments = 240,
 ): [number, number, number][] {
   return Array.from({ length: segments + 1 }, (_, index) => {
-    const position = positionFromMeanAnomaly(body, (index / segments) * Math.PI * 2)
+    // Uniform mean-anomaly sampling leaves severe gaps near perihelion on
+    // eccentric comets (Halley e≈0.968). Uniform eccentric anomaly traces the
+    // geometric ellipse evenly while live propagation remains time-correct.
+    const position = positionFromEccentricAnomaly(
+      body,
+      (index / segments) * Math.PI * 2,
+    )
     const distance = Math.hypot(...position) || 1
     const radius = auToSceneRadius(distance, trueScale) * orbitScale
     return eclipticToScene(

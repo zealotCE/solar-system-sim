@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 
+import { getSpacecraftById } from '@/data/spacecraft'
 import { TARGET_SEQUENCE } from '@/data/targets'
+import { ensureTrajectory } from '@/data/trajectoryRegistry'
 import { useSimulation } from '@/hooks/useSimulation'
 import { dateInputToSimTime, simTimeToDateInput } from '@/lib/utils'
 
@@ -40,7 +42,13 @@ export function DeepLink() {
       setLanguageMode(language)
     }
     const target = params.get('target')
-    if (target && TARGET_SEQUENCE.includes(target)) selectPlanet(target)
+    if (target && TARGET_SEQUENCE.includes(target)) {
+      const craft = getSpacecraftById(target)
+      if (craft?.trajectoryId) {
+        void ensureTrajectory(craft.trajectoryId).catch(() => undefined)
+      }
+      selectPlanet(target)
+    }
   }, [selectPlanet, setLanguageMode, setSimulationTime, setTrueScale])
 
   useEffect(() => {

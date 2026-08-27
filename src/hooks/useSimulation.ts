@@ -15,7 +15,9 @@ import {
   isCraftLaunched,
   isCraftSceneVisible,
 } from '../data/spacecraft'
+import { ensureTrajectory } from '../data/trajectoryRegistry'
 import { SIM_TIME_MAX_YEARS, SIM_TIME_MIN_YEARS, utcMsToSimTime } from '../lib/utils'
+import { isVisualTestMode } from '../lib/visualTest'
 
 export type ScenePreset = 'cinematic' | 'observatory' | 'minimal' | 'custom'
 export type LanguageMode = 'zh' | 'bilingual' | 'en'
@@ -103,8 +105,8 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export function SimulationProvider({ children }: { children: ReactNode }) {
-  const [isPlaying, setIsPlaying] = useState(true)
-  const [speed, setSpeedState] = useState(80)
+  const [isPlaying, setIsPlaying] = useState(() => !isVisualTestMode())
+  const [speed, setSpeedState] = useState(1)
   const [timeDirection, setTimeDirectionState] = useState<1 | -1>(1)
   const [simTime, setSimTime] = useState(0)
   const [orbitEpoch, setOrbitEpoch] = useState(0)
@@ -197,6 +199,9 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
   const selectPlanet = useCallback((id: string | null) => {
     const craft = getSpacecraftById(id)
     if (craft && !isCraftLaunched(craft, simTimeRef.current)) return
+    if (craft?.trajectoryId) {
+      void ensureTrajectory(craft.trajectoryId).catch(() => undefined)
+    }
     setSelectedPlanetId(id)
     if (id) {
       // Completed impact/destruction missions remain available as archives but
@@ -356,6 +361,10 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
   const selectStoryEvent = useCallback((storyId: string, eventId: string) => {
     const event = getMissionStoryEvent(storyId, eventId)
     if (!event) return
+    const storyCraft = getSpacecraftById(event.craftId)
+    if (storyCraft?.trajectoryId) {
+      void ensureTrajectory(storyCraft.trajectoryId).catch(() => undefined)
+    }
 
     // True time travel: the model rewinds to the event's calendar date, so the
     // planets and the probe stand in their real historical configuration.

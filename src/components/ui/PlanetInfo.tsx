@@ -39,7 +39,10 @@ import {
   isCraftSceneVisible,
 } from '@/data/spacecraft'
 import { getAdjacentTargetId, getAvailableTargetSequence } from '@/data/targets'
+import { ensureTrajectory } from '@/data/trajectoryRegistry'
+import type { Trajectory } from '@/data/trajectoryTypes'
 import { useSimulation } from '@/hooks/useSimulation'
+import { useTrajectory } from '@/hooks/useTrajectory'
 import { getMinorBodyModel } from '@/lib/minorBodyModels'
 import { getCraftModel } from '@/lib/spacecraftModels'
 import { cn, formatDays } from '@/lib/utils'
@@ -128,10 +131,14 @@ const KM_PER_AU = 1.496e8
 const LIGHT_SECONDS_PER_AU = 499.005
 
 /** Real heliocentric position (J2000 ecliptic, AU) for any selectable target. */
-function getTargetHeliocentricAu(id: string, simTime: number): [number, number, number] | null {
+function getTargetHeliocentricAu(
+  id: string,
+  simTime: number,
+  trajectory: Trajectory | null,
+): [number, number, number] | null {
   if (id === 'sun') return [0, 0, 0]
   const craft = getSpacecraftById(id)
-  if (craft) return getCraftHeliocentricAu(craft, simTime)
+  if (craft) return getCraftHeliocentricAu(craft, simTime, trajectory)
   const minorBody = getMinorBodyById(id)
   if (minorBody) return getMinorBodyHeliocentricAu(minorBody, simTime)
   const moonHit = findMoonById(id)
@@ -174,9 +181,15 @@ function formatLightTime(seconds: number, pureChinese: boolean): string {
 }
 
 /** NASA Eyes-style live readouts computed from the current model time. */
-function LiveReadouts({ targetId }: { targetId: string }) {
+function LiveReadouts({
+  targetId,
+  trajectory,
+}: {
+  targetId: string
+  trajectory: Trajectory | null
+}) {
   const { simTime, pureChinese, englishOnly } = useSimulation()
-  const target = getTargetHeliocentricAu(targetId, simTime)
+  const target = getTargetHeliocentricAu(targetId, simTime, trajectory)
   if (!target) return null
   const [tx, ty, tz] = target
   const distanceSun = Math.hypot(tx, ty, tz)
@@ -337,6 +350,10 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
     selectStoryEvent,
   } = useSimulation()
   const craft = getSpacecraftById(selectedPlanetId)
+  const trajectorySnapshot = useTrajectory(craft?.trajectoryId ?? null)
+  const trajectory = trajectorySnapshot?.samples ?? null
+  const trajectoryUnavailable = Boolean(craft?.trajectoryId && !trajectory)
+  const trajectoryFailed = trajectorySnapshot?.status === 'error'
   const minorBody = craft ? null : getMinorBodyById(selectedPlanetId)
   const body = craft || minorBody ? null : getBodyById(selectedPlanetId)
 
@@ -401,7 +418,7 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
       }
     : getBodyMeta(selectedPlanetId)
 
-  const craftStats = craft ? getCraftStats(craft, simTime, englishOnly) : null
+  const craftStats = craft ? getCraftStats(craft, simTime, trajectory, englishOnly) : null
   const provenance = craft?.provenance ?? null
   const fidelityLabel = provenance
     ? englishOnly
@@ -421,8 +438,8 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
   const craftDisclosure = craft
     ? craft.kind === 'deep-probe'
       ? englishOnly
-        ? 'Deep-space positions are interpolated from offline JPL Horizons vectors (about 30-day samples with cubic Hermite interpolation); dates outside coverage clamp to an endpoint.'
-        : '深空位置由 JPL Horizons 离线状态矢量插值得到（约 30 天采样 + Hermite 插值）；覆盖范围外钳制在端点。'
+        ? 'Deep-space positions are interpolated from lazy-loaded JPL Horizons vectors (mixed 30-day, 1-day, and 6-hour samples with cubic Hermite interpolation); dates outside coverage clamp to an endpoint.'
+        : '深空位置由按任务载入的 JPL Horizons 状态矢量插值得到（30 天、1 天与 6 小时混合采样 + Hermite 插值）；覆盖范围外钳制在端点。'
       : craft.anchor === 'earth' || craft.anchor === 'earth-l2'
         ? englishOnly
           ? 'This near-Earth or Sun–Earth representation uses simplified orbital parameters and is not live operational tracking.'
@@ -433,13 +450,31 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
   const minorBodyModel = minorBody ? getMinorBodyModel(minorBody.id) : null
   const missionStory = craft ? getMissionStoryForCraft(craft.id) : null
   const archiveProfile = getArchiveProfile(selectedPlanetId)
-  const canFollowCraft = craft ? isCraftSceneVisible(craft, simTime) : true
-  const stats = craftStats
+  const canFollowCraft = craft
+    ? isCraftSceneVisible(craft, simTime) && !trajectoryUnavailable
+    : true
+  const stats = craft
     ? [
-        { label: englishOnly ? 'CURRENT DISTANCE' : '当前距离', value: craftStats.distance, icon: Ruler },
-        { label: englishOnly ? 'SIGNAL DELAY' : '信号延迟', value: craftStats.signal, icon: Radio },
-        { label: englishOnly ? 'MISSION AGE' : '任务时长', value: craftStats.age, icon: Timer },
-        { label: englishOnly ? 'CRUISE SPEED' : '巡航速度', value: craftStats.velocity, icon: Gauge },
+        {
+          label: englishOnly ? 'CURRENT DISTANCE' : '当前距离',
+          value: craftStats?.distance ?? '…',
+          icon: Ruler,
+        },
+        {
+          label: englishOnly ? 'SIGNAL DELAY' : '信号延迟',
+          value: craftStats?.signal ?? '…',
+          icon: Radio,
+        },
+        {
+          label: englishOnly ? 'MISSION AGE' : '任务时长',
+          value: craftStats?.age ?? '…',
+          icon: Timer,
+        },
+        {
+          label: englishOnly ? 'CRUISE SPEED' : '巡航速度',
+          value: craftStats?.velocity ?? (craft.velocityKms ? `${craft.velocityKms} km/s` : '—'),
+          icon: Gauge,
+        },
       ]
     : [
         { label: englishOnly ? 'DIAMETER' : '直径', value: `${getDiameter(selectedPlanetId).toLocaleString()} km`, icon: Ruler },
@@ -497,6 +532,53 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
         </div>
       </section>
 
+      {trajectoryUnavailable ? (
+        <section
+          className="flex items-center gap-2.5 rounded-xl border border-cyan-200/10 bg-cyan-400/[0.035] px-3 py-2"
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            className={`size-1.5 shrink-0 rounded-full ${
+              trajectoryFailed ? 'bg-rose-300' : 'animate-pulse bg-cyan-300'
+            }`}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-medium tracking-[0.06em] text-cyan-100/80">
+              {trajectoryFailed
+                ? pureChinese
+                  ? '轨迹载入失败'
+                  : englishOnly
+                    ? 'TRAJECTORY LOAD FAILED'
+                    : '轨迹载入失败 / TRAJECTORY LOAD FAILED'
+                : pureChinese
+                  ? '正在载入任务轨迹'
+                  : englishOnly
+                    ? 'LOADING MISSION TRAJECTORY'
+                    : '正在载入任务轨迹 / LOADING MISSION TRAJECTORY'}
+            </p>
+            <p className="mt-0.5 truncate text-[8px] text-slate-500">
+              {pureChinese
+                ? '定位、航迹与跟随暂缓'
+                : englishOnly
+                  ? 'PLACEMENT, TRAIL & FOLLOW PAUSED'
+                  : '定位与跟随暂缓 / PLACEMENT & FOLLOW PAUSED'}
+            </p>
+          </div>
+          {trajectoryFailed && craft?.trajectoryId ? (
+            <button
+              type="button"
+              className="shrink-0 rounded-md border border-cyan-200/15 px-2 py-1 text-[8px] tracking-[0.08em] text-cyan-100/70"
+              onClick={() => {
+                void ensureTrajectory(craft.trajectoryId!).catch(() => undefined)
+              }}
+            >
+              {pureChinese ? '重试' : 'RETRY'}
+            </button>
+          ) : null}
+        </section>
+      ) : null}
+
       <dl className="grid grid-cols-2 gap-2">
         {stats.map(({ label, value, icon: Icon }) => (
           <div key={label} className="metric-tile">
@@ -511,7 +593,7 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
         ))}
       </dl>
 
-      <LiveReadouts targetId={selectedPlanetId} />
+      <LiveReadouts targetId={selectedPlanetId} trajectory={trajectory} />
 
       {craft ? (
         <section className="telemetry-strip">
@@ -691,8 +773,8 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
       {craft && trueScale ? (
         <p className="rounded-xl border border-cyan-200/10 bg-cyan-300/[0.035] px-3 py-2 text-[10px] leading-relaxed text-cyan-100/65">
           {pureChinese
-            ? `真实比例：实体最长展开跨度约 ${craft.maxSpanM} m；识别模型随镜头缩放并设可读上下限，未选中目标另有屏幕准心。`
-            : `TRUE SCALE · physical span ≈ ${craft.maxSpanM} m. The identification model responds to zoom with readability bounds; unselected targets also use screen reticles.`}
+            ? `真实比例：物理实体最长展开跨度约 ${craft.maxSpanM} m；选中时另叠加有界的非物理屏幕识别模型，未选中目标仅显示固定尺寸准心。`
+            : `TRUE SCALE · physical span ≈ ${craft.maxSpanM} m. Selection adds a bounded, non-physical screen-space identification model; unselected targets use fixed-size reticles only.`}
         </p>
       ) : null}
 
@@ -705,6 +787,30 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
           <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-[10px]">
             <div className="col-span-2"><dt>{pureChinese ? '数据纪元' : 'EPOCH'}</dt><dd>{englishOnly ? (provenance?.sourceEpoch ?? '2026-01-01').replace(' 至 ', ' TO ') : provenance?.sourceEpoch ?? '2026-01-01'}</dd></div>
             <div className="col-span-2"><dt>{pureChinese ? '位置精度' : 'FIDELITY'}</dt><dd>{fidelityLabel ?? (englishOnly ? 'SIMPLIFIED ORBIT' : '简化轨道')}</dd></div>
+            {craft.trajectoryCoverage ? (
+              <>
+                <div>
+                  <dt>
+                    {pureChinese
+                      ? '已知截至'
+                      : englishOnly
+                        ? 'ACTUAL / KNOWN THROUGH'
+                        : '已知截至 / ACTUAL THROUGH'}
+                  </dt>
+                  <dd>{craft.trajectoryCoverage.actualDataThrough}</dd>
+                </div>
+                <div>
+                  <dt>
+                    {pureChinese
+                      ? '预测始于'
+                      : englishOnly
+                        ? 'PREDICTION STARTS'
+                        : '预测始于 / PREDICTION STARTS'}
+                  </dt>
+                  <dd>{craft.trajectoryCoverage.predictionStarts}</dd>
+                </div>
+              </>
+            ) : null}
             <div className="col-span-2"><dt>{pureChinese ? '数据来源' : 'SOURCE'}</dt><dd>{provenance?.source ?? (englishOnly ? 'NASA / JPL PUBLIC DATA · OFFLINE SNAPSHOT' : 'NASA / JPL 公开资料 · 离线快照')}</dd></div>
             <div className="col-span-2"><dt>{pureChinese ? '最长展开跨度' : 'MAX DEPLOYED SPAN'}</dt><dd>≈ {craft.maxSpanM} m</dd></div>
             <div className="col-span-2"><dt>{pureChinese ? '3D 模型' : '3D MODEL'}</dt><dd>{craftModel ? craftModel.credit : pureChinese ? '程序化示意模型（无官方模型）' : 'PROCEDURAL MODEL (NO OFFICIAL ASSET)'}</dd></div>
@@ -764,7 +870,22 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
         disabled={!canFollowCraft}
         onClick={() => setFollowPlanet(!followPlanet)}
       >
-        {!canFollowCraft ? (
+        {trajectoryUnavailable ? (
+          <>
+            <Satellite />
+            {trajectoryFailed
+              ? pureChinese
+                ? '轨迹不可用 · 无法跟随'
+                : englishOnly
+                  ? 'TRAJECTORY UNAVAILABLE · FOLLOW PAUSED'
+                  : '轨迹不可用 / TRAJECTORY UNAVAILABLE'
+              : pureChinese
+                ? '轨迹载入中 · 暂缓跟随'
+                : englishOnly
+                  ? 'LOADING TRAJECTORY · FOLLOW PAUSED'
+                  : '轨迹载入中 / LOADING TRAJECTORY'}
+          </>
+        ) : !canFollowCraft ? (
           <>
             <Satellite />
             {englishOnly ? 'ARCHIVE ONLY · CRAFT NO LONGER IN FLIGHT' : '仅档案 · 航天器已不在飞行'}

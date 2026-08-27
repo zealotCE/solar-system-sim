@@ -1,8 +1,16 @@
 /**
  * Numeric sanity checks for the planetary ephemeris and true-scale mapping.
- * Run: node --experimental-strip-types scripts/validate-ephemeris.ts
+ * Run: npx esbuild scripts/validate-ephemeris.ts --bundle --format=esm
+ * --platform=node --outfile=.tmp-validate.mjs && node .tmp-validate.mjs
  */
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+
 import { getPlanetEclipticAu, icrfToEclipticAu } from '../src/data/ephemeris'
+import {
+  HORIZONS_TRAJECTORY_INDEX,
+  type HorizonsMissionId,
+} from '../src/data/horizonsTrajectoryIndex'
 import {
   AU_UNITS,
   KM_PER_AU,
@@ -12,7 +20,6 @@ import {
   getPlanetPosition,
   getTrueBodyRadius,
 } from '../src/data/planets'
-import { HORIZONS_TRAJECTORIES } from '../src/data/horizonsTrajectories'
 import {
   MINOR_BODIES,
   getMinorBodyHeliocentricAu,
@@ -24,10 +31,34 @@ import {
   auToSceneRadius,
   getCraftPhysicalSpan,
   getDeepProbeTrailWaypoints,
+  getSpacecraftPosition,
   isCraftLaunched,
   isCraftSceneVisible,
 } from '../src/data/spacecraft'
+import type { Trajectory, TrajectoryAsset } from '../src/data/trajectoryTypes'
+import {
+  HORIZONS_TRAIL_QUALITY_ORDER,
+  getClosedOrbitSegmentTiers,
+  getMinorBodyOrbitMaxSegments,
+  getPlanetOrbitMaxSegments,
+} from '../src/lib/screenSpaceLod'
+import type { TimedTrailPoint } from '../src/lib/trajectorySemantics'
 import { utcMsToSimTime } from '../src/lib/utils'
+
+const trajectoryEntries = await Promise.all(
+  (Object.keys(HORIZONS_TRAJECTORY_INDEX) as HorizonsMissionId[]).map(async (id) => {
+    const assetPath = resolve(
+      'public',
+      HORIZONS_TRAJECTORY_INDEX[id].assetUrl.replace(/^\/+/u, ''),
+    )
+    const asset = JSON.parse(await readFile(assetPath, 'utf8')) as TrajectoryAsset
+    return [id, asset.samples] as const
+  }),
+)
+const TRAJECTORY_SAMPLES = Object.fromEntries(trajectoryEntries) as Record<
+  HorizonsMissionId,
+  Trajectory
+>
 
 let failures = 0
 function check(label: string, ok: boolean, detail: string) {
@@ -39,6 +70,17 @@ function angleBetweenDeg(a: number[], b: number[]) {
   const dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
   const cos = dot / (Math.hypot(...a) * Math.hypot(...b))
   return (Math.acos(Math.min(1, Math.max(-1, cos))) * 180) / Math.PI
+}
+
+function polylineTurnDeg(a: number[], b: number[], c: number[]) {
+  return angleBetweenDeg(
+    b.map((value, index) => value - a[index]),
+    c.map((value, index) => value - b[index]),
+  )
+}
+
+function timedTrailSpatial(point: TimedTrailPoint): [number, number, number] {
+  return [point[1], point[2], point[3]]
 }
 
 function pointToSegmentDistance(point: number[], start: number[], end: number[]) {
@@ -74,7 +116,7 @@ function pointToSegmentDistance(point: number[], start: number[], end: number[])
 //    Horizons position must sit on top of the ephemeris Neptune.
 {
   const jd = 2447763.5
-  const samples = HORIZONS_TRAJECTORIES.voyager2
+  const samples = TRAJECTORY_SAMPLES.voyager2
   let low = 0
   for (let i = 0; i < samples.length - 1; i++) if (samples[i][0] <= jd) low = i
   const a = samples[low]
@@ -97,7 +139,7 @@ function pointToSegmentDistance(point: number[], start: number[], end: number[])
 // 3. New Horizons' Pluto flyby (2015-07-14, JD 2457217.5).
 {
   const jd = 2457217.5
-  const samples = HORIZONS_TRAJECTORIES.newhorizons
+  const samples = TRAJECTORY_SAMPLES.newhorizons
   let low = 0
   for (let i = 0; i < samples.length - 1; i++) if (samples[i][0] <= jd) low = i
   const a = samples[low]
@@ -134,7 +176,7 @@ function pointToSegmentDistance(point: number[], start: number[], end: number[])
 // 5. Uranus at the Voyager 2 flyby date (1986-01-24) should match the probe.
 {
   const jd = 2446454.5
-  const samples = HORIZONS_TRAJECTORIES.voyager2
+  const samples = TRAJECTORY_SAMPLES.voyager2
   let low = 0
   for (let i = 0; i < samples.length - 1; i++) if (samples[i][0] <= jd) low = i
   const a = samples[low]
@@ -226,13 +268,26 @@ function pointToSegmentDistance(point: number[], start: number[], end: number[])
   const finite = MINOR_BODIES.every((body) =>
     sampleTimes.every((time) => getMinorBodyHeliocentricAu(body, time).every(Number.isFinite)),
   )
+  let representativeTierCount = 0
   const closed = MINOR_BODIES.every((body) => {
-    const points = getMinorBodyOrbitPoints(body, false, 1, 96)
-    return Math.hypot(
-      points[0][0] - points.at(-1)![0],
-      points[0][1] - points.at(-1)![1],
-      points[0][2] - points.at(-1)![2],
-    ) < 1e-8
+    const tiers = getClosedOrbitSegmentTiers(getMinorBodyOrbitMaxSegments(body.id)).filter(
+      (segments, index, all) =>
+        segments === 128 || segments === 512 || index === all.length - 1,
+    )
+    representativeTierCount += tiers.length
+    return tiers.every((segments) => {
+      const points = getMinorBodyOrbitPoints(body, false, 1, segments)
+      return (
+        points.length === segments + 1 &&
+        points.every((point) => point.every(Number.isFinite)) &&
+        Math.hypot(
+          points[0][0] - points.at(-1)![0],
+          points[0][1] - points.at(-1)![1],
+          points[0][2] - points.at(-1)![2],
+        ) <
+          1e-8
+      )
+    })
   })
   const physicalError = Math.max(
     ...MINOR_BODIES.map((body) =>
@@ -243,7 +298,11 @@ function pointToSegmentDistance(point: number[], start: number[], end: number[])
     ),
   )
   check('Minor-body positions are finite', finite, `${MINOR_BODIES.length} SBDB targets`)
-  check('Minor-body orbit paths close', closed, '96 segments per target')
+  check(
+    'Minor-body representative LOD tiers close',
+    closed,
+    `${representativeTierCount} body/tier paths`,
+  )
   check(
     'Minor bodies share the physical scene scale',
     physicalError < 1e-20,
@@ -271,9 +330,38 @@ function pointToSegmentDistance(point: number[], start: number[], end: number[])
 {
   let maxRadiusRatio = 0
   let closed = true
+  let representativeLodValid = true
+  let representativeTierCount = 0
   for (const planet of PLANETS) {
-    const segments = planet.id === 'pluto' ? 16384 : 2048
-    const orbit = getPlanetOrbitPoints(planet, { trueScale: true }, segments, 0)
+    const maxSegments = getPlanetOrbitMaxSegments(planet.id)
+    const tiers = getClosedOrbitSegmentTiers(maxSegments).filter(
+      (segments, index, all) =>
+        segments === 128 || segments === 512 || index === all.length - 1,
+    )
+    representativeTierCount += tiers.length
+    for (const segments of tiers) {
+      const tierOrbit = getPlanetOrbitPoints(
+        planet,
+        { trueScale: true },
+        segments,
+        0,
+      )
+      representativeLodValid &&=
+        tierOrbit.length === segments + 1 &&
+        tierOrbit.every((point) => point.every(Number.isFinite)) &&
+        Math.hypot(
+          tierOrbit[0][0] - tierOrbit.at(-1)![0],
+          tierOrbit[0][1] - tierOrbit.at(-1)![1],
+          tierOrbit[0][2] - tierOrbit.at(-1)![2],
+        ) <
+          1e-10
+    }
+    const orbit = getPlanetOrbitPoints(
+      planet,
+      { trueScale: true },
+      maxSegments,
+      0,
+    )
     const position = getPlanetPosition(planet, 0, { trueScale: true })
     const distance = Math.min(
       ...orbit.slice(0, -1).map((start, index) =>
@@ -293,33 +381,160 @@ function pointToSegmentDistance(point: number[], start: number[], end: number[])
   }
   check('Planet orbit paths close exactly', closed, `${PLANETS.length} osculating ellipses`)
   check(
+    'Planet representative LOD tiers are finite and closed',
+    representativeLodValid,
+    `${representativeTierCount} body/tier paths`,
+  )
+  check(
     'Planet centers remain on rendered orbits',
     maxRadiusRatio < 0.25,
     `max offset=${maxRadiusRatio.toFixed(3)} body radii`,
   )
+  check(
+    'Pluto overview uses materially fewer orbit vertices',
+    getPlanetOrbitMaxSegments('pluto') / 128 >= 128,
+    `overview=129 vertices, focus=${getPlanetOrbitMaxSegments('pluto') + 1} vertices`,
+  )
 }
 
-// 12. A curved inner-system Horizons trail must be substantially denser than
-//     its 30-day source vectors and keep angular line steps visually smooth.
+// 12. A curved inner-system Horizons trail must still receive adaptive Hermite
+//     subdivision between the mixed 30-day/1-day/6-hour source vectors.
 {
   const osirisRex = SPACECRAFT.find((craft) => craft.id === 'osirisrex')!
-  const trail = getDeepProbeTrailWaypoints(osirisRex, { trueScale: true })
+  const samples = TRAJECTORY_SAMPLES[osirisRex.trajectoryId!]
+  const trails = Object.fromEntries(
+    HORIZONS_TRAIL_QUALITY_ORDER.map((quality) => [
+      quality,
+      getDeepProbeTrailWaypoints(
+        osirisRex,
+        samples,
+        { trueScale: true },
+        quality,
+      ),
+    ]),
+  ) as Record<
+    (typeof HORIZONS_TRAIL_QUALITY_ORDER)[number],
+    TimedTrailPoint[]
+  >
+  const trail = trails.focus
   let maxAngularStep = 0
   for (let index = 0; index < trail.length - 1; index++) {
     maxAngularStep = Math.max(
       maxAngularStep,
-      angleBetweenDeg(trail[index], trail[index + 1]),
+      angleBetweenDeg(
+        timedTrailSpatial(trail[index]),
+        timedTrailSpatial(trail[index + 1]),
+      ),
     )
   }
   check(
-    'Horizons trails use Hermite subdivision',
-    trail.length > osirisRex.trajectory!.length * 4,
-    `${osirisRex.trajectory!.length} vectors → ${trail.length} trail points`,
+    'Mixed-cadence trails use Hermite subdivision',
+    trail.length > samples.length,
+    `${samples.length} vectors → ${trail.length} trail points`,
+  )
+  check(
+    'Horizons trail quality tiers reduce overview geometry',
+    trails.overview.length < trails.medium.length &&
+      trails.medium.length <= trails.focus.length,
+    `overview=${trails.overview.length}, medium=${trails.medium.length}, focus=${trails.focus.length}`,
   )
   check(
     'Inner-system trail segments stay smooth',
     maxAngularStep < 1.6,
     `max angular step=${maxAngularStep.toFixed(2)}°`,
+  )
+  check(
+    'Uncached craft placement stays absent',
+    getSpacecraftPosition(osirisRex, 0, null, { trueScale: true }) === null,
+    'no fabricated origin/anchor fallback',
+  )
+}
+
+// 13. Every rendered Horizons trail is flattened by its actual scene-space
+//     curvature in both display mappings, rather than by heliocentric bearing
+//     alone. This catches the former Europa Clipper/Galileo sawtooth.
+{
+  let worstTurn = 0
+  let worstId = ''
+  let worstMode = ''
+  for (const trueScale of [false, true]) {
+    for (const craft of SPACECRAFT.filter((entry) => entry.trajectoryId)) {
+      const trail = getDeepProbeTrailWaypoints(
+        craft,
+        TRAJECTORY_SAMPLES[craft.trajectoryId!],
+        { trueScale },
+        'focus',
+      )
+      for (let index = 1; index < trail.length - 1; index++) {
+        const before = timedTrailSpatial(trail[index - 1])
+        const point = timedTrailSpatial(trail[index])
+        const after = timedTrailSpatial(trail[index + 1])
+        const segmentProduct =
+          Math.hypot(...point.map((value, axis) => value - before[axis])) *
+          Math.hypot(...after.map((value, axis) => value - point[axis]))
+        if (segmentProduct < 1e-8) continue
+        const turn = polylineTurnDeg(before, point, after)
+        if (turn > worstTurn) {
+          worstTurn = turn
+          worstId = craft.id
+          worstMode = trueScale ? 'true' : 'stylized'
+        }
+      }
+    }
+  }
+  check(
+    'All spacecraft trails have bounded polyline turns',
+    worstTurn < 1.2,
+    `max turn=${worstTurn.toFixed(2)}° (${worstId}, ${worstMode})`,
+  )
+}
+
+// 14. High-eccentricity orbit geometry is sampled spatially. Uniform mean
+//     anomaly used to leave Halley's perihelion as a visibly angular chord.
+{
+  const halley = MINOR_BODIES.find((body) => body.id === 'halley')!
+  const maxSegments = getMinorBodyOrbitMaxSegments(halley.id)
+  const orbit = getMinorBodyOrbitPoints(halley, false, 1, maxSegments)
+  let maxTurn = 0
+  for (let index = 1; index < orbit.length - 1; index++) {
+    maxTurn = Math.max(maxTurn, polylineTurnDeg(orbit[index - 1], orbit[index], orbit[index + 1]))
+  }
+  check(
+    'Halley orbit stays smooth through perihelion',
+    maxTurn < 1,
+    `max turn=${maxTurn.toFixed(2)}°`,
+  )
+  check(
+    'Halley overview uses materially fewer orbit vertices',
+    maxSegments / 128 >= 32,
+    `overview=129 vertices, focus=${maxSegments + 1} vertices`,
+  )
+}
+
+// 15. The generated six-hour windows must place a source vector within one
+//     cadence step of representative critical encounters.
+{
+  const encounters = [
+    { samples: TRAJECTORY_SAMPLES.voyager2, jd: 2447763.5, label: 'V2 Neptune' },
+    { samples: TRAJECTORY_SAMPLES.newhorizons, jd: 2457217.5, label: 'NH Pluto' },
+    { samples: TRAJECTORY_SAMPLES.cassini, jd: 2453187.5, label: 'Cassini Saturn' },
+    { samples: TRAJECTORY_SAMPLES.europaclipper, jd: 2462602.5, label: 'Clipper Jupiter' },
+  ]
+  let worstDistanceDays = 0
+  let worstLabel = 'all sampled events'
+  for (const encounter of encounters) {
+    const nearest = Math.min(
+      ...encounter.samples.map(([jdTdb]) => Math.abs(jdTdb - encounter.jd)),
+    )
+    if (nearest > worstDistanceDays) {
+      worstDistanceDays = nearest
+      worstLabel = encounter.label
+    }
+  }
+  check(
+    'Critical encounters have six-hour vectors',
+    worstDistanceDays <= 0.25,
+    `worst=${worstDistanceDays.toFixed(3)} d (${worstLabel})`,
   )
 }
 

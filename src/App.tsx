@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 
 import { DeepLink } from '@/components/DeepLink'
+import { VisualTestHarness } from '@/components/VisualTestHarness'
 import { ControlPanel } from '@/components/ui/ControlPanel'
 import { SolarSystem } from '@/components/scene/SolarSystem'
 import { SimulationProvider } from '@/hooks/useSimulation'
@@ -34,6 +35,7 @@ export default function App() {
   return (
     <SimulationProvider>
       <DeepLink />
+      <VisualTestHarness />
       <main className="app-shell relative h-dvh w-full overflow-hidden bg-[#02060f]">
         <SceneErrorBoundary>
           <SolarSystem />
