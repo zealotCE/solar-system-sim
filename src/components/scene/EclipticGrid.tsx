@@ -25,9 +25,9 @@ type DeviationOrbitPath = EclipticDeviationPath & {
   anchor: EclipticDeviationPoint
 }
 
-const ORBIT_SOURCE_SEGMENTS = 96
-const PLANET_GUIDE_SAMPLES = 14
-const MINOR_BODY_GUIDE_SAMPLES = 10
+const ORBIT_SOURCE_SEGMENTS = 768
+const PLANET_GUIDE_SAMPLES = 336
+const MINOR_BODY_GUIDE_SAMPLES = 240
 
 function usePositionGeometry(positions: Float32Array): THREE.BufferGeometry {
   const geometry = useMemo(() => {
@@ -41,7 +41,7 @@ function usePositionGeometry(positions: Float32Array): THREE.BufferGeometry {
   return geometry
 }
 
-function DeviationCurtainBatch({
+function DeviationGuideBatch({
   geometry,
   origin = [0, 0, 0],
   selected = false,
@@ -51,7 +51,6 @@ function DeviationCurtainBatch({
   selected?: boolean
 }) {
   const dropGeometry = usePositionGeometry(geometry.dropPositions)
-  const ribbonGeometry = usePositionGeometry(geometry.ribbonPositions)
 
   if (geometry.dropSegmentCount === 0) return null
 
@@ -61,19 +60,10 @@ function DeviationCurtainBatch({
         <lineBasicMaterial
           color={selected ? '#a8d9e4' : '#5f9ab0'}
           transparent
-          opacity={selected ? 0.15 : 0.1}
+          opacity={selected ? 0.045 : 0.025}
           depthWrite={false}
         />
       </lineSegments>
-      <mesh geometry={ribbonGeometry}>
-        <meshBasicMaterial
-          color={selected ? '#72b6c9' : '#397d94'}
-          transparent
-          opacity={selected ? 0.021 : 0.014}
-          depthWrite={false}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
     </group>
   )
 }
@@ -188,9 +178,9 @@ export function EclipticGrid() {
           side={THREE.DoubleSide}
         />
       </mesh>
-      <DeviationCurtainBatch geometry={deviationBatches.base} />
+      <DeviationGuideBatch geometry={deviationBatches.base} />
       {deviationBatches.selected && deviationBatches.selectedOrigin ? (
-        <DeviationCurtainBatch
+        <DeviationGuideBatch
           geometry={deviationBatches.selected}
           origin={deviationBatches.selectedOrigin}
           selected

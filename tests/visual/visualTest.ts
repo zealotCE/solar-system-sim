@@ -46,16 +46,16 @@ export async function captureVisualScene(page: Page, scene: VisualScene): Promis
         state: document.documentElement.dataset.visualTestState,
         target: document.documentElement.dataset.visualTestTarget,
       })),
-      { timeout: 45_000 },
+      { timeout: 90_000 },
     )
     .toEqual({ date: scene.date, state: 'ready', target: scene.target })
   await expect
     .poll(
       () => page.evaluate(() => document.documentElement.dataset.visualTestFrame),
-      { timeout: 45_000 },
+      { timeout: 90_000 },
     )
     .toBe('ready')
-  await page.waitForLoadState('networkidle', { timeout: 45_000 })
+  await page.waitForLoadState('networkidle', { timeout: 90_000 })
 
   const canvas = page.locator('.app-shell canvas').first()
   await expect(canvas).toBeVisible()

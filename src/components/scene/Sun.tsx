@@ -5,7 +5,12 @@ import * as THREE from 'three'
 
 import { SUN, getSunVisualRadius } from '@/data/planets'
 import { getGlowTexture } from '@/lib/planetTextures'
-import { createStableHtmlPosition } from '@/lib/sceneLabels'
+import {
+  LABEL_FOCUSED_UPDATE_EPS,
+  LABEL_IDLE_UPDATE_EPS,
+  createContinuousHtmlPosition,
+  createStableHtmlPosition,
+} from '@/lib/sceneLabels'
 import { useBodySurface } from '@/lib/textureAssets'
 import { useSimulation } from '@/hooks/useSimulation'
 import { isVisualTestMode, markVisualTestFrameReady } from '@/lib/visualTest'
@@ -31,15 +36,22 @@ export function Sun() {
   const glow = useMemo(() => getGlowTexture(), [])
   const radius = getSunVisualRadius(trueScale)
   const freezeAnimation = isVisualTestMode()
-  const calculateLabelPosition = useMemo(
+  const selected = selectedPlanetId === SUN.id
+  const stableLabelPosition = useMemo(
     () => createStableHtmlPosition(),
     [],
   )
+  const continuousLabelPosition = useMemo(
+    () => createContinuousHtmlPosition(),
+    [],
+  )
+  const calculateLabelPosition = selected
+    ? continuousLabelPosition
+    : stableLabelPosition
 
   useFrame(({ clock, camera }) => {
     if (!coreRef.current || !visualRef.current) return
     coreRef.current.rotation.y = (simTimeRef.current * 365.25 * Math.PI * 2) / SUN.rotationPeriod
-    const selected = selectedPlanetId === SUN.id
     const targetScale = planetScale * (selected && !trueScale ? 1.045 : 1)
     const nextScale = freezeAnimation
       ? targetScale
@@ -69,8 +81,6 @@ export function Sun() {
     }
     if (freezeAnimation) markVisualTestFrameReady()
   })
-
-  const selected = selectedPlanetId === SUN.id
 
   return (
     <group>
@@ -177,6 +187,7 @@ export function Sun() {
       {showLabels ? (
         <Html
           center
+          eps={selected ? LABEL_FOCUSED_UPDATE_EPS : LABEL_IDLE_UPDATE_EPS}
           calculatePosition={calculateLabelPosition}
           zIndexRange={[12, 0]}
           style={{ pointerEvents: 'none' }}

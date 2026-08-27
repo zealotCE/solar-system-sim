@@ -10,6 +10,8 @@ import { chromium } from 'playwright-core'
 
 const [, , outPath = 'preview.png', ...actions] = process.argv
 const captureUrl = process.env.CAPTURE_URL ?? 'http://localhost:4317/'
+const captureWidth = Number(process.env.CAPTURE_WIDTH) || 1600
+const captureHeight = Number(process.env.CAPTURE_HEIGHT) || 1000
 const parsedCaptureUrl = new URL(captureUrl)
 const visualTestScene = parsedCaptureUrl.searchParams.has('visual-test')
   ? Object.fromEntries(new URLSearchParams(parsedCaptureUrl.hash.slice(1)))
@@ -25,7 +27,9 @@ const browser = await chromium.launch({
 })
 
 try {
-  const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
+  const page = await browser.newPage({
+    viewport: { width: captureWidth, height: captureHeight },
+  })
   await page.goto(captureUrl, {
     waitUntil: 'domcontentloaded',
   })

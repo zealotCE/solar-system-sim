@@ -1,11 +1,12 @@
 import { Minimize2, Orbit, Radio, Scale, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { PLANETS } from '@/data/planets'
+import { ASTEROID_BELT, PLANETS } from '@/data/planets'
 import { MINOR_BODIES } from '@/data/minorBodies'
 import { SPACECRAFT } from '@/data/spacecraft'
 import { getAdjacentTargetId } from '@/data/targets'
 import { useSimulation } from '@/hooks/useSimulation'
+import { KUIPER_BELT_DETAIL_COUNT } from '@/lib/kuiperBelt'
 import { formatSimDate, formatSimTime, useMediaQuery } from '@/lib/utils'
 import { ParameterPanel } from './ParameterPanel'
 import { PlanetInfo } from './PlanetInfo'
@@ -19,7 +20,8 @@ export type PanelId = 'targets' | 'archive' | 'stories' | 'parameters'
 
 const MOON_COUNT = PLANETS.reduce((total, planet) => total + planet.moons.length, 0)
 const OBJECT_COUNT = (
-  2600 +
+  ASTEROID_BELT.count +
+  KUIPER_BELT_DETAIL_COUNT +
   1 +
   PLANETS.length +
   MOON_COUNT +

@@ -10,6 +10,7 @@ import {
   getPlanetPosition,
 } from '../src/data/planets'
 import {
+  ECLIPTIC_DEVIATION_DEFAULT_SAMPLES,
   ECLIPTIC_DEVIATION_MAX_SAMPLES,
   ECLIPTIC_DEVIATION_MIN_RELATIVE_HEIGHT,
   buildEclipticDeviationGeometry,
@@ -17,9 +18,9 @@ import {
   type EclipticDeviationPoint,
 } from '../src/lib/eclipticDeviation'
 
-const SOURCE_SEGMENTS = 96
-const PLANET_SAMPLES = 14
-const MINOR_BODY_SAMPLES = 10
+const SOURCE_SEGMENTS = 768
+const PLANET_SAMPLES = 336
+const MINOR_BODY_SAMPLES = 240
 const EPOCH = 24.5
 
 function tiltedCircle(
@@ -58,30 +59,31 @@ function assertProjectedEndpoints(
 const synthetic = buildEclipticDeviationGeometry([
   {
     id: 'synthetic',
-    points: tiltedCircle(0.2),
-    samples: 12,
+    points: tiltedCircle(0.2, 512),
   },
 ])
 assert.deepEqual(synthetic.includedPathIds, ['synthetic'])
 assert.deepEqual(synthetic.skippedPathIds, [])
-assert.deepEqual(synthetic.pathSampleCounts, [{ id: 'synthetic', samples: 12 }])
-assert.equal(synthetic.dropSegmentCount, 12)
-assert.equal(synthetic.ribbonTriangleCount, 24)
-assert.equal(synthetic.dropPositions.length, 12 * 2 * 3)
-assert.equal(synthetic.ribbonPositions.length, 12 * 2 * 3 * 3)
+assert.deepEqual(synthetic.pathSampleCounts, [
+  { id: 'synthetic', samples: ECLIPTIC_DEVIATION_DEFAULT_SAMPLES },
+])
+assert.equal(synthetic.dropSegmentCount, ECLIPTIC_DEVIATION_DEFAULT_SAMPLES)
+assert.equal(
+  synthetic.dropPositions.length,
+  ECLIPTIC_DEVIATION_DEFAULT_SAMPLES * 2 * 3,
+)
 assert.ok(allFinite(synthetic.dropPositions))
-assert.ok(allFinite(synthetic.ribbonPositions))
+assert.equal('ribbonPositions' in synthetic, false)
 assertProjectedEndpoints(synthetic.dropPositions)
 
 const capped = buildEclipticDeviationGeometry([
   {
     id: 'capped',
-    points: tiltedCircle(0.3, 128),
+    points: tiltedCircle(0.3, 512),
     samples: 10_000,
   },
 ])
 assert.equal(capped.dropSegmentCount, ECLIPTIC_DEVIATION_MAX_SAMPLES)
-assert.equal(capped.ribbonTriangleCount, ECLIPTIC_DEVIATION_MAX_SAMPLES * 2)
 
 const nearlyCoplanar = buildEclipticDeviationGeometry([
   {
@@ -133,9 +135,8 @@ for (const trueScale of [false, true]) {
 
   assert.ok(geometry.includedPathIds.length > 0)
   assert.deepEqual(geometry.skippedPathIds, ['earth'])
-  assert.equal(geometry.dropSegmentCount, 202)
+  assert.equal(geometry.dropSegmentCount, 4848)
   assert.equal(geometry.dropSegmentCount, expectedDrops)
-  assert.equal(geometry.ribbonTriangleCount, expectedDrops * 2)
   assert.ok(
     geometry.pathSampleCounts.every(({ id, samples }) =>
       PLANETS.some((planet) => planet.id === id)
@@ -144,7 +145,6 @@ for (const trueScale of [false, true]) {
     ),
   )
   assert.ok(allFinite(geometry.dropPositions))
-  assert.ok(allFinite(geometry.ribbonPositions))
   assertProjectedEndpoints(geometry.dropPositions)
   modeExtents.push(Math.max(...geometry.dropPositions.map(Math.abs)))
 }
@@ -177,7 +177,6 @@ const anchored = buildEclipticDeviationGeometry(
   { origin: anchor },
 )
 assert.ok(allFinite(anchored.dropPositions))
-assert.ok(allFinite(anchored.ribbonPositions))
 assertProjectedEndpoints(anchored.dropPositions, anchor[1])
 
 const mercury = PLANETS.find((planet) => planet.id === 'mercury')!
@@ -202,5 +201,5 @@ assert.notDeepEqual(
 )
 
 console.log(
-  `Ecliptic-deviation validation passed: 12-sample projection, ${ECLIPTIC_DEVIATION_MAX_SAMPLES}-sample cap, finite stylized/true-scale buffers, local rebasing, and epoch-aware paths.`,
+  `Ecliptic-deviation validation passed: ${ECLIPTIC_DEVIATION_DEFAULT_SAMPLES}-sample line-only projection, ${ECLIPTIC_DEVIATION_MAX_SAMPLES}-sample cap, finite stylized/true-scale buffers, local rebasing, and epoch-aware paths.`,
 )

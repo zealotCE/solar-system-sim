@@ -183,8 +183,8 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
             <span className="mt-0.5 block text-[10px] leading-relaxed text-slate-500">
               {trueScale
                 ? text(
-                    '严格同比例：实体与轨道共用同一 km 比例尺；选中航天器另叠加有界的非物理屏幕识别模型，未选中目标仅用固定尺寸准心',
-                    'Strict physical scale for entities and orbits; selected spacecraft add a bounded, non-physical screen-space identification model, while unselected targets use fixed-size reticles.',
+                    '严格同比例：实体与轨道共用同一 km 比例尺；选中航天器另叠加 28–44 px 半透明识别模型，未选中目标仅用固定尺寸准心',
+                    'Strict physical scale for entities and orbits; selected spacecraft add a translucent 28–44 px identification model, while unselected targets use fixed-size reticles.',
                   )
                 : text(
                     '当前为艺术化比例：外侧轨道压缩、天体放大；航天器以固定屏幕尺寸准心识别，不叠加大面积辉光',
@@ -211,8 +211,20 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
             />
             <span>
               {semanticText(
-                '已飞行 / 已知 · 实线渐变',
-                'FLOWN / KNOWN · SOLID GRADIENT',
+                '回放时刻前 · 亮实线',
+                'BEFORE PLAYBACK · BRIGHT SOLID',
+              )}
+            </span>
+          </div>
+          <div className="trajectory-legend-item">
+            <span
+              className="trajectory-legend-swatch trajectory-legend-swatch--known-future"
+              aria-hidden="true"
+            />
+            <span>
+              {semanticText(
+                '已知后续历史 · 短虚线',
+                'KNOWN LATER HISTORY · SHORT DASHES',
               )}
             </span>
           </div>
@@ -223,8 +235,8 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
             />
             <span>
               {semanticText(
-                '预测 / 传播 · 低透明虚线',
-                'PREDICTED / PROPAGATED · DIM DASHED',
+                '预测 / 传播 · 稀疏虚线',
+                'PREDICTED / PROPAGATED · SPARSE DASHES',
               )}
             </span>
           </div>
@@ -242,21 +254,33 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
           </div>
           <div className="trajectory-legend-item">
             <span
+              className="trajectory-legend-swatch trajectory-legend-swatch--planet-orbit"
+              aria-hidden="true"
+            />
+            <span>
+              {semanticText(
+                '八大行星轨道 · 强调实线',
+                'EIGHT PLANET ORBITS · EMPHASIZED SOLID',
+              )}
+            </span>
+          </div>
+          <div className="trajectory-legend-item">
+            <span
               className="trajectory-legend-swatch trajectory-legend-swatch--osculating"
               aria-hidden="true"
             />
             <span>
               {semanticText(
-                '瞬时密切轨道 · 细闭合线',
-                'INSTANTANEOUS OSCULATING ORBIT · THIN CLOSED LINE',
+                '小天体 / 卫星密切轨道 · 细线',
+                'MINOR / MOON OSCULATING ORBIT · THIN LINE',
               )}
             </span>
           </div>
         </div>
         <p className="trajectory-legend-note">
           {semanticText(
-            '线型由任务来源边界固定；未选中航天器仅显示最近航段，选中后显示完整航迹或闭合轨道。',
-            'Line status follows mission provenance; unselected craft show only a recent tail, while selection reveals the full trail or closed orbit.',
+            '选中任务显示完整航迹，并按当前回放时刻与数据来源边界分层。行星轨道器采用日心坐标，母行星公转叠加局部绕行会形成连续波浪。',
+            'Selected missions show complete paths split by playback time and provenance. In the Sun-centered frame, a planet orbiter naturally forms waves as local loops ride along the planet’s solar motion.',
           )}
         </p>
       </section>
@@ -403,8 +427,11 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
         />
         <ToggleRow
           icon={Boxes}
-          label={text('小行星带', 'ASTEROID BELT')}
-          description={text('显示火星与木星之间的碎石群', 'Show the debris population between Mars and Jupiter.')}
+          label={text('小天体与天体带', 'SMALL BODIES & BELTS')}
+          description={text(
+            '显示主小行星带、柯伊伯带与重点小天体',
+            'Show the main asteroid belt, Kuiper belt, and featured minor bodies.',
+          )}
           enabled={showAsteroids}
           onChange={setShowAsteroids}
         />

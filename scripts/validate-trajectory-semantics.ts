@@ -28,6 +28,7 @@ import {
   getTrajectoryDataStatus,
   getTrajectoryLineStyle,
   sliceTimedTrailToWindow,
+  splitTimedTrailAtPlaybackTime,
   splitTimedTrailAtPredictionBoundary,
   type TimedTrailPoint,
 } from '../src/lib/trajectorySemantics.ts'
@@ -115,6 +116,26 @@ assert.equal(
 assert.equal(getTrajectoryDataStatus(4.999_999, 5), 'actual')
 assert.equal(getTrajectoryDataStatus(5, 5), 'predicted')
 assert.equal(getTrajectoryDataStatus(6, 5), 'predicted')
+
+const playbackSplit = splitTimedTrailAtPlaybackTime(
+  syntheticTrail,
+  currentJdTdb,
+)
+assert.equal(playbackSplit.flown.at(-1)![0], currentJdTdb)
+assert.equal(playbackSplit.knownFuture[0][0], currentJdTdb)
+assert.strictEqual(
+  playbackSplit.flown.at(-1),
+  playbackSplit.knownFuture[0],
+  'playback-time segments must share one boundary vertex',
+)
+assert.deepEqual(
+  splitTimedTrailAtPlaybackTime(syntheticTrail, -1),
+  { flown: [], knownFuture: syntheticTrail, boundary: null },
+)
+assert.deepEqual(
+  splitTimedTrailAtPlaybackTime(syntheticTrail, 30),
+  { flown: syntheticTrail, knownFuture: [], boundary: null },
+)
 
 const allActual = splitTimedTrailAtPredictionBoundary(syntheticTrail, 30)
 assert.deepEqual(allActual.actual, syntheticTrail)
@@ -247,10 +268,14 @@ assert.equal(
 
 for (const active of [false, true]) {
   const actualStyle = getTrajectoryLineStyle('actual', active)
+  const knownFutureStyle = getTrajectoryLineStyle('known-future', active)
   const predictedStyle = getTrajectoryLineStyle('predicted', active)
   assert.equal(actualStyle.dashed, false)
+  assert.equal(knownFutureStyle.dashed, true)
   assert.equal(predictedStyle.dashed, true)
+  assert(knownFutureStyle.opacity < actualStyle.opacity)
   assert(predictedStyle.opacity < actualStyle.opacity)
+  assert.notEqual(knownFutureStyle.dashSize, predictedStyle.dashSize)
   assert(predictedStyle.lineWidth < actualStyle.lineWidth)
   assert(actualStyle.lineWidth <= 1.1)
 
@@ -270,6 +295,11 @@ assert(artificialActiveStyle.lineWidth <= 1)
 
 const cassini = SPACECRAFT.find((candidate) => candidate.id === 'cassini')
 assert(cassini)
+assert(
+  cassini.trajectoryCoverage!.predictionStartsJdTdb >
+    cassini.trajectoryCoverage!.endJdTdb,
+  'Cassini coverage must end before any propagated segment begins',
+)
 const postCassiniTime = utcMsToSimTime(Date.parse('2026-01-01T00:00:00Z'))
 assert.equal(isCraftSceneVisible(cassini, postCassiniTime), false)
 assert.equal(

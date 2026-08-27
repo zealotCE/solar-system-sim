@@ -9,7 +9,11 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { getMissionStoryEvent, type MissionStoryEvent } from '../data/missionStories'
+import {
+  getMissionStoryEvent,
+  getMissionStoryPlaybackTarget,
+  type MissionStoryEvent,
+} from '../data/missionStories'
 import {
   getSpacecraftById,
   isCraftLaunched,
@@ -17,6 +21,7 @@ import {
   isCraftTrailOnlyArchiveVisible,
 } from '../data/spacecraft'
 import { ensureTrajectory } from '../data/trajectoryRegistry'
+import { nextLabelMode, type LabelMode } from '../lib/labelModes'
 import { SIM_TIME_MAX_YEARS, SIM_TIME_MIN_YEARS, utcMsToSimTime } from '../lib/utils'
 import { isVisualTestMode } from '../lib/visualTest'
 
@@ -46,7 +51,9 @@ export type SimulationState = {
   selectedPlanetId: string | null
   followPlanet: boolean
   showOrbits: boolean
+  labelMode: LabelMode
   showLabels: boolean
+  showAllLabels: boolean
   showAsteroids: boolean
   showEcliptic: boolean
   showSpacecraft: boolean
@@ -78,7 +85,8 @@ export type SimulationState = {
   selectPlanet: (id: string | null) => void
   setFollowPlanet: (value: boolean) => void
   setShowOrbits: (value: boolean) => void
-  setShowLabels: (value: boolean) => void
+  setLabelMode: (value: LabelMode) => void
+  cycleLabelMode: () => void
   setShowAsteroids: (value: boolean) => void
   setShowEcliptic: (value: boolean) => void
   setShowSpacecraft: (value: boolean) => void
@@ -114,7 +122,9 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
   const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(null)
   const [followPlanet, setFollowPlanet] = useState(false)
   const [showOrbits, setShowOrbits] = useState(true)
-  const [showLabels, setShowLabels] = useState(true)
+  const [labelMode, setLabelModeState] = useState<LabelMode>('primary')
+  const showLabels = labelMode !== 'off'
+  const showAllLabels = labelMode === 'all'
   const [showAsteroidsState, setShowAsteroidsState] = useState(true)
   const [showEclipticState, setShowEclipticState] = useState(false)
   const [showSpacecraft, setShowSpacecraft] = useState(true)
@@ -240,6 +250,14 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
   }, [followPlanet, selectedPlanetId, simTime])
 
   const markCustom = useCallback(() => setScenePreset('custom'), [])
+
+  const setLabelMode = useCallback((value: LabelMode) => {
+    setLabelModeState(value)
+  }, [])
+
+  const cycleLabelMode = useCallback(() => {
+    setLabelModeState((current) => nextLabelMode(current))
+  }, [])
 
   const setTrueScale = useCallback(
     (value: boolean) => {
@@ -407,7 +425,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     setTrueScaleState(true)
     setShowSpacecraft(true)
     setSelectedStoryEvent({ storyId, event })
-    setSelectedPlanetId(event.focusTargetId)
+    setSelectedPlanetId(getMissionStoryPlaybackTarget(event))
     setFollowPlanet(true)
     setFocusNonce((value) => value + 1)
   }, [])
@@ -431,7 +449,9 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       selectedPlanetId,
       followPlanet,
       showOrbits,
+      labelMode,
       showLabels,
+      showAllLabels,
       showAsteroids: showAsteroidsState,
       showEcliptic: showEclipticState,
       showSpacecraft,
@@ -464,7 +484,8 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       selectPlanet,
       setFollowPlanet,
       setShowOrbits,
-      setShowLabels,
+      setLabelMode,
+      cycleLabelMode,
       setShowAsteroids,
       setShowEcliptic,
       setShowSpacecraft,
@@ -493,7 +514,9 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       selectedPlanetId,
       followPlanet,
       showOrbits,
+      labelMode,
       showLabels,
+      showAllLabels,
       showAsteroidsState,
       showEclipticState,
       showSpacecraft,
@@ -523,6 +546,8 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       jumpToDate,
       jumpToNow,
       selectPlanet,
+      setLabelMode,
+      cycleLabelMode,
       setShowAsteroids,
       setShowEcliptic,
       setAutoRotate,

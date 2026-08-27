@@ -7,7 +7,9 @@ export type TimedTrailPoint = readonly [
 ]
 
 export type TrajectoryDataStatus = 'actual' | 'predicted'
-export type TrajectorySegmentSemantic = TrajectoryDataStatus
+export type TrajectorySegmentSemantic =
+  | TrajectoryDataStatus
+  | 'known-future'
 export type OrbitLineSemantic = 'reference' | 'osculating' | 'artificial'
 export type ArtificialTrailDisplayMode = 'recent' | 'full'
 
@@ -42,22 +44,40 @@ const TRAJECTORY_LINE_STYLES = {
       gapSize: 0,
     },
   },
-  predicted: {
+  'known-future': {
     normal: {
-      opacity: 0.24,
-      lineWidth: 0.68,
+      opacity: 0.2,
+      lineWidth: 0.62,
       dashed: true,
-      dashScale: 3,
-      dashSize: 0.9,
-      gapSize: 0.65,
+      dashScale: 3.2,
+      dashSize: 0.42,
+      gapSize: 0.52,
     },
     active: {
-      opacity: 0.42,
-      lineWidth: 0.88,
+      opacity: 0.34,
+      lineWidth: 0.78,
       dashed: true,
-      dashScale: 3,
+      dashScale: 3.2,
+      dashSize: 0.42,
+      gapSize: 0.52,
+    },
+  },
+  predicted: {
+    normal: {
+      opacity: 0.16,
+      lineWidth: 0.58,
+      dashed: true,
+      dashScale: 2,
       dashSize: 0.9,
-      gapSize: 0.65,
+      gapSize: 0.9,
+    },
+    active: {
+      opacity: 0.26,
+      lineWidth: 0.72,
+      dashed: true,
+      dashScale: 2,
+      dashSize: 0.9,
+      gapSize: 0.9,
     },
   },
 } as const satisfies Record<
@@ -68,16 +88,16 @@ const TRAJECTORY_LINE_STYLES = {
 const ORBIT_LINE_STYLES = {
   reference: {
     normal: {
-      opacity: 0.2,
-      lineWidth: 0.72,
+      opacity: 0.36,
+      lineWidth: 1.05,
       dashed: false,
       dashScale: 1,
       dashSize: 1,
       gapSize: 0,
     },
     active: {
-      opacity: 0.72,
-      lineWidth: 1.55,
+      opacity: 0.86,
+      lineWidth: 1.65,
       dashed: false,
       dashScale: 1,
       dashSize: 1,
@@ -86,16 +106,16 @@ const ORBIT_LINE_STYLES = {
   },
   osculating: {
     normal: {
-      opacity: 0.14,
-      lineWidth: 0.62,
+      opacity: 0.11,
+      lineWidth: 0.5,
       dashed: false,
       dashScale: 1,
       dashSize: 1,
       gapSize: 0,
     },
     active: {
-      opacity: 0.56,
-      lineWidth: 1.2,
+      opacity: 0.58,
+      lineWidth: 1.15,
       dashed: false,
       dashScale: 1,
       dashSize: 1,
@@ -318,6 +338,66 @@ export type TrajectorySemanticSegments = Readonly<{
   /** Shared render vertex; its data status is predicted at the exact boundary. */
   boundary: TimedTrailPoint | null
 }>
+
+export type TrajectoryPlaybackSegments = Readonly<{
+  flown: TimedTrailPoint[]
+  knownFuture: TimedTrailPoint[]
+  /** Shared render vertex at the selected historical playback time. */
+  boundary: TimedTrailPoint | null
+}>
+
+/**
+ * Splits reconstructed historical data at the moving playback clock. Samples
+ * after the cursor remain known history from today's perspective, but must not
+ * look as if they had already happened inside the replay.
+ */
+export function splitTimedTrailAtPlaybackTime(
+  points: readonly TimedTrailPoint[],
+  playbackJdTdb: number,
+): TrajectoryPlaybackSegments {
+  if (points.length === 0 || !Number.isFinite(playbackJdTdb)) {
+    return { flown: [...points], knownFuture: [], boundary: null }
+  }
+
+  const first = points[0]
+  const last = points.at(-1)!
+  if (playbackJdTdb < first[0]) {
+    return { flown: [], knownFuture: [...points], boundary: null }
+  }
+  if (playbackJdTdb === first[0]) {
+    return {
+      flown: [first],
+      knownFuture: [...points],
+      boundary: first,
+    }
+  }
+  if (playbackJdTdb >= last[0]) {
+    return { flown: [...points], knownFuture: [], boundary: null }
+  }
+
+  let upperIndex = 1
+  while (
+    upperIndex < points.length &&
+    points[upperIndex][0] < playbackJdTdb
+  ) {
+    upperIndex += 1
+  }
+
+  const before = points[upperIndex - 1]
+  const after = points[upperIndex]
+  const boundary =
+    after[0] === playbackJdTdb
+      ? after
+      : interpolateTimedTrailPoint(before, after, playbackJdTdb)
+  const flown = points.slice(0, upperIndex)
+  flown.push(boundary)
+  const knownFuture =
+    after === boundary
+      ? [boundary, ...points.slice(upperIndex + 1)]
+      : [boundary, ...points.slice(upperIndex)]
+
+  return { flown, knownFuture, boundary }
+}
 
 /**
  * Splits immutable trajectory provenance from the moving simulation clock.

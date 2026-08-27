@@ -8,9 +8,7 @@ export type EclipticDeviationPath = {
 
 export type EclipticDeviationGeometry = {
   dropPositions: Float32Array
-  ribbonPositions: Float32Array
   dropSegmentCount: number
-  ribbonTriangleCount: number
   includedPathIds: string[]
   skippedPathIds: string[]
   pathSampleCounts: Array<{ id: string; samples: number }>
@@ -26,10 +24,10 @@ export type EclipticDeviationOptions = {
   minRelativeHeight?: number
 }
 
-/** Sparse enough to read as guides rather than a second orbit wireframe. */
-export const ECLIPTIC_DEVIATION_DEFAULT_SAMPLES = 12
+/** Dense enough to follow the orbit without implying a filled surface. */
+export const ECLIPTIC_DEVIATION_DEFAULT_SAMPLES = 288
 /** Hard ceiling per orbit, including selected targets. */
-export const ECLIPTIC_DEVIATION_MAX_SAMPLES = 18
+export const ECLIPTIC_DEVIATION_MAX_SAMPLES = 384
 /** Suppress paths whose maximum elevation is below roughly 0.14 degrees. */
 export const ECLIPTIC_DEVIATION_MIN_RELATIVE_HEIGHT = 0.0025
 
@@ -90,9 +88,9 @@ function relativeHeight(points: readonly EclipticDeviationPoint[]): number {
 }
 
 /**
- * Builds one merged drop-line buffer and one merged triangle buffer. The
- * helper is renderer-independent so its projection and sparsity invariants can
- * be checked numerically without mounting React or WebGL.
+ * Builds one merged drop-line buffer. The helper is renderer-independent so
+ * its projection and density invariants can be checked numerically without
+ * mounting React or WebGL.
  */
 export function buildEclipticDeviationGeometry(
   paths: readonly EclipticDeviationPath[],
@@ -108,7 +106,6 @@ export function buildEclipticDeviationGeometry(
     options.minRelativeHeight ?? ECLIPTIC_DEVIATION_MIN_RELATIVE_HEIGHT,
   )
   const dropPositions: number[] = []
-  const ribbonPositions: number[] = []
   const includedPathIds: string[] = []
   const skippedPathIds: string[] = []
   const pathSampleCounts: Array<{ id: string; samples: number }> = []
@@ -136,20 +133,6 @@ export function buildEclipticDeviationGeometry(
 
     for (let index = 0; index < sampleCount; index += 1) {
       dropPositions.push(...localTops[index], ...localBases[index])
-
-      const nextIndex = (index + 1) % sampleCount
-      const top = localTops[index]
-      const base = localBases[index]
-      const nextTop = localTops[nextIndex]
-      const nextBase = localBases[nextIndex]
-      ribbonPositions.push(
-        ...top,
-        ...base,
-        ...nextTop,
-        ...nextTop,
-        ...base,
-        ...nextBase,
-      )
     }
 
     includedPathIds.push(path.id)
@@ -158,9 +141,7 @@ export function buildEclipticDeviationGeometry(
 
   return {
     dropPositions: new Float32Array(dropPositions),
-    ribbonPositions: new Float32Array(ribbonPositions),
     dropSegmentCount: dropPositions.length / 6,
-    ribbonTriangleCount: ribbonPositions.length / 9,
     includedPathIds,
     skippedPathIds,
     pathSampleCounts,

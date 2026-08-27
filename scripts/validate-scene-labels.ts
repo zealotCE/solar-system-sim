@@ -3,9 +3,16 @@ import * as THREE from 'three'
 
 import {
   DETAIL_DISTANCE_EXIT_MULTIPLIER,
+  LABEL_FOCUSED_UPDATE_EPS,
+  LABEL_IDLE_UPDATE_EPS,
+  createContinuousHtmlPosition,
   createStableHtmlPosition,
   selectDistanceDetailVisibility,
 } from '../src/lib/sceneLabels.ts'
+import {
+  LABEL_MODE_ORDER,
+  nextLabelMode,
+} from '../src/lib/labelModes.ts'
 import {
   getScenePixelRatio,
   selectWideOverviewQuality,
@@ -79,6 +86,23 @@ const moved = project(label, camera, viewport)
 assert.notDeepEqual(moved, centered)
 assert(moved.every(Number.isInteger), 'projected labels must land on CSS pixels')
 
+const projectContinuously = createContinuousHtmlPosition()
+label.position.x = 0
+label.updateMatrixWorld()
+const continuousCenter = projectContinuously(label, camera, viewport)
+label.position.x = 0.005
+label.updateMatrixWorld()
+const continuousMove = projectContinuously(label, camera, viewport)
+assert(
+  continuousMove[0] > continuousCenter[0] &&
+    !Number.isInteger(continuousMove[0]),
+  'focused labels must retain smooth sub-pixel motion',
+)
+assert(
+  LABEL_FOCUSED_UPDATE_EPS < LABEL_IDLE_UPDATE_EPS / 100,
+  'focused labels must update materially more often than idle labels',
+)
+
 assert.equal(
   selectWideOverviewQuality({
     cameraDistance: 100,
@@ -107,9 +131,14 @@ assert.equal(
 assert.equal(getScenePixelRatio(2, true), 1.2)
 assert.equal(getScenePixelRatio(2, false), 1.75)
 assert.equal(getScenePixelRatio(1, true), 1)
+assert.deepEqual(LABEL_MODE_ORDER, ['off', 'primary', 'all'])
+assert.equal(nextLabelMode('off'), 'primary')
+assert.equal(nextLabelMode('primary'), 'all')
+assert.equal(nextLabelMode('all'), 'off')
 
 console.log(
-  `Scene-label validation passed: pixel-aligned projection, 0.75px deadband, ` +
+  `Scene-label validation passed: stable idle projection, continuous focused projection, ` +
+    `${LABEL_FOCUSED_UPDATE_EPS}/${LABEL_IDLE_UPDATE_EPS} update eps, 0.75px idle deadband, ` +
     `${DETAIL_DISTANCE_EXIT_MULTIPLIER.toFixed(2)}× distance hysteresis, ` +
-    `and center-aware wide-view quality selection.`,
+    `three cyclic label modes, and center-aware wide-view quality selection.`,
 )

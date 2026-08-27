@@ -18,6 +18,14 @@ import {
   isEarthNeighborhoodCraft,
   selectEarthCraftDetailVisibility,
 } from '../src/lib/earthCraftLod.ts'
+import {
+  SELECTED_MARKER_MAX_PIXELS,
+  SELECTED_MODEL_MAX_PIXELS,
+  SELECTED_MODEL_MIN_PIXELS,
+  TRUE_SCALE_IDENTIFICATION_REFERENCE_RATIO,
+  UNSELECTED_MARKER_MAX_PIXELS,
+  getCraftIdentificationPixels,
+} from '../src/lib/spacecraftPresentation.ts'
 import { utcMsToSimTime } from '../src/lib/utils.ts'
 
 const earthCraft = SPACECRAFT.filter((craft) =>
@@ -160,11 +168,46 @@ assert(
   getEarthCraftDetailReferenceRadius(true, 1) <
     getEarthCraftDetailReferenceRadius(false, 1),
 )
+assert.equal(
+  getCraftIdentificationPixels({
+    naturalPixels: 200,
+    selected: true,
+    hasModel: true,
+  }),
+  SELECTED_MODEL_MAX_PIXELS,
+)
+assert.equal(
+  getCraftIdentificationPixels({
+    naturalPixels: 1,
+    selected: true,
+    hasModel: true,
+  }),
+  SELECTED_MODEL_MIN_PIXELS,
+)
+assert.equal(
+  getCraftIdentificationPixels({
+    naturalPixels: 200,
+    selected: true,
+    hasModel: false,
+  }),
+  SELECTED_MARKER_MAX_PIXELS,
+)
+assert.equal(
+  getCraftIdentificationPixels({
+    naturalPixels: 200,
+    selected: false,
+    hasModel: true,
+  }),
+  UNSELECTED_MARKER_MAX_PIXELS,
+)
+assert(TRUE_SCALE_IDENTIFICATION_REFERENCE_RATIO < 0.2)
+assert(SELECTED_MODEL_MAX_PIXELS < 48)
 assert.equal(ARTIFICIAL_TRAIL_UPDATE_FRAMES, 8)
 
 console.log(
   `Earth-craft LOD validation passed: ${earthCraft.length} labels collapse at overview, ` +
     `${EARTH_CRAFT_DETAIL_EXIT_RADIUS_PX}/${EARTH_CRAFT_DETAIL_ENTER_RADIUS_PX}px hysteresis, ` +
     `unresolved LEO motion remains continuous at ≤${LOCAL_ORBIT_MAX_ANIMATED_REVS_PER_SECOND} rev/s, ` +
+    `selected identification models stay within ${SELECTED_MODEL_MIN_PIXELS}–${SELECTED_MODEL_MAX_PIXELS}px, ` +
     `and trails update every ${ARTIFICIAL_TRAIL_UPDATE_FRAMES} frames.`,
 )

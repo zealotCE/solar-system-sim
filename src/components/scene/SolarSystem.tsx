@@ -51,6 +51,7 @@ import { SIM_TIME_MAX_YEARS, SIM_TIME_MIN_YEARS } from '@/lib/utils'
 import { isVisualTestMode } from '@/lib/visualTest'
 import { AsteroidBelt } from './AsteroidBelt'
 import { EclipticGrid } from './EclipticGrid'
+import { KuiperBelt } from './KuiperBelt'
 import { MinorBody } from './MinorBody'
 import { OrbitLine } from './OrbitLine'
 import { Planet } from './Planet'
@@ -489,7 +490,7 @@ function PlanetOrbit({ planet }: { planet: PlanetData }) {
         customPoints={orbit.points}
         color={planet.color}
         active={selected}
-        semantic="osculating"
+        semantic={planet.dwarf ? 'osculating' : 'reference'}
       />
     </group>
   )
@@ -637,6 +638,7 @@ function SceneContent() {
       {showAsteroids ? MINOR_BODIES.map((body) => <MinorBody key={body.id} body={body} />) : null}
       {showSpacecraft ? <SpacecraftFleet /> : null}
       {showAsteroids ? <AsteroidBelt /> : null}
+      {showAsteroids ? <KuiperBelt reduced={wideOverview} /> : null}
       {/* Screen-space vignette lives in CSS; the postprocessing one produced a
           visible circular veil over the scene at wide zoom levels. */}
       <EffectComposer

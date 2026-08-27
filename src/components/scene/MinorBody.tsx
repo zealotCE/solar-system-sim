@@ -12,6 +12,9 @@ import { useSimulation } from '@/hooks/useSimulation'
 import { getMinorBodyModel } from '@/lib/minorBodyModels'
 import { getCraftLocatorTexture } from '@/lib/planetTextures'
 import {
+  LABEL_FOCUSED_UPDATE_EPS,
+  LABEL_IDLE_UPDATE_EPS,
+  createContinuousHtmlPosition,
   createStableHtmlPosition,
   selectDistanceDetailVisibility,
 } from '@/lib/sceneLabels'
@@ -32,6 +35,7 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
     selectedPlanetId,
     selectPlanet,
     showLabels,
+    showAllLabels,
     orbitScale,
     trueScale,
     englishOnly,
@@ -40,10 +44,17 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
   const officialModel = getMinorBodyModel(body.id)
   const selected = selectedPlanetId === body.id
   const radius = getMinorBodyVisualRadius(body, trueScale)
-  const calculateLabelPosition = useMemo(
+  const stableLabelPosition = useMemo(
     () => createStableHtmlPosition(),
     [],
   )
+  const continuousLabelPosition = useMemo(
+    () => createContinuousHtmlPosition(),
+    [],
+  )
+  const calculateLabelPosition = selected
+    ? continuousLabelPosition
+    : stableLabelPosition
 
   useFrame(({ camera }) => {
     const group = groupRef.current
@@ -166,10 +177,10 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
         </sprite>
       ) : null}
 
-      {showLabels && (selected || detailVisible) ? (
+      {showLabels && (selected || detailVisible || showAllLabels) ? (
         <Html
           center
-          eps={0.25}
+          eps={selected ? LABEL_FOCUSED_UPDATE_EPS : LABEL_IDLE_UPDATE_EPS}
           calculatePosition={calculateLabelPosition}
           zIndexRange={[12, 0]}
           style={{ pointerEvents: 'none' }}

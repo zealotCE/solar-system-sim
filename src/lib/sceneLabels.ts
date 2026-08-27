@@ -2,6 +2,8 @@ import * as THREE from 'three'
 
 export const LABEL_PIXEL_STEP = 1
 export const LABEL_POSITION_DEADBAND_PX = 0.75
+export const LABEL_IDLE_UPDATE_EPS = 0.25
+export const LABEL_FOCUSED_UPDATE_EPS = 0.001
 export const DETAIL_DISTANCE_EXIT_MULTIPLIER = 1.15
 
 type HtmlViewportSize = {
@@ -41,6 +43,22 @@ export function createStableHtmlPosition(
       lastY = Math.round(exactY / step) * step
     }
     return [lastX, lastY]
+  }
+}
+
+/**
+ * Projects a focused label at its exact sub-pixel position. Focus travel is
+ * intentional motion, so quantization and deadband would turn it into visible
+ * one-pixel steps instead of suppressing idle-camera noise.
+ */
+export function createContinuousHtmlPosition(): StableHtmlPosition {
+  const world = new THREE.Vector3()
+  return (object, camera, size) => {
+    world.setFromMatrixPosition(object.matrixWorld).project(camera)
+    return [
+      world.x * (size.width / 2) + size.width / 2,
+      -world.y * (size.height / 2) + size.height / 2,
+    ]
   }
 }
 

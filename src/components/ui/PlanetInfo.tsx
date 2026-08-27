@@ -448,6 +448,11 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
         : null
     : null
   const craftModel = craft ? getCraftModel(craft.id) : null
+  const hasPredictedTrajectory = Boolean(
+    craft?.trajectoryCoverage &&
+      craft.trajectoryCoverage.predictionStartsJdTdb <
+        craft.trajectoryCoverage.endJdTdb,
+  )
   const minorBodyModel = minorBody ? getMinorBodyModel(minorBody.id) : null
   const missionStory = craft ? getMissionStoryForCraft(craft.id) : null
   const archiveProfile = getArchiveProfile(selectedPlanetId)
@@ -701,10 +706,10 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
           </div>
           <p className="mb-2.5 text-[10px] leading-relaxed text-slate-400">
             {pureChinese
-              ? '选择历史节点，模型会回到当天、切换真实比例并聚焦相关天体。'
+              ? '选择历史节点，模型会回到当天、切换真实比例并跟随对应航天器；遭遇天体仍保留在现场作为参照。'
               : englishOnly
-                ? 'Pick an event to travel to its date, enable true scale, and focus the related target.'
-                : '选择历史节点 / TRAVEL TO ITS DATE IN TRUE SCALE AND FOCUS.'}
+                ? 'Pick an event to travel to its date, enable true scale, and follow the spacecraft; the encounter body remains visible for context.'
+                : '选择历史节点 / TRAVEL IN TRUE SCALE AND FOLLOW THE SPACECRAFT.'}
           </p>
           <div className="mission-timeline">
             {missionStory.events.map((event) => {
@@ -777,8 +782,8 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
       {craft && trueScale ? (
         <p className="rounded-xl border border-cyan-200/10 bg-cyan-300/[0.035] px-3 py-2 text-[10px] leading-relaxed text-cyan-100/65">
           {pureChinese
-            ? `真实比例：物理实体最长展开跨度约 ${craft.maxSpanM} m；选中时另叠加有界的非物理屏幕识别模型，未选中目标仅显示固定尺寸准心。`
-            : `TRUE SCALE · physical span ≈ ${craft.maxSpanM} m. Selection adds a bounded, non-physical screen-space identification model; unselected targets use fixed-size reticles only.`}
+            ? `真实比例：物理实体最长展开跨度约 ${craft.maxSpanM} m；选中时另叠加 28–44 px 的半透明非物理识别模型，未选中目标仅显示固定尺寸准心。`
+            : `TRUE SCALE · physical span ≈ ${craft.maxSpanM} m. Selection adds a translucent 28–44 px non-physical identification model; unselected targets use fixed-size reticles only.`}
         </p>
       ) : null}
 
@@ -805,13 +810,27 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
                 </div>
                 <div>
                   <dt>
-                    {pureChinese
-                      ? '预测始于'
-                      : englishOnly
-                        ? 'PREDICTION STARTS'
-                        : '预测始于 / PREDICTION STARTS'}
+                    {hasPredictedTrajectory
+                      ? pureChinese
+                        ? '预测始于'
+                        : englishOnly
+                          ? 'PREDICTION STARTS'
+                          : '预测始于 / PREDICTION STARTS'
+                      : pureChinese
+                        ? '传播航段'
+                        : englishOnly
+                          ? 'PROPAGATED SEGMENT'
+                          : '传播航段 / PROPAGATED'}
                   </dt>
-                  <dd>{craft.trajectoryCoverage.predictionStarts}</dd>
+                  <dd>
+                    {hasPredictedTrajectory
+                      ? craft.trajectoryCoverage.predictionStarts
+                      : pureChinese
+                        ? '无'
+                        : englishOnly
+                          ? 'NONE'
+                          : '无 / NONE'}
+                  </dd>
                 </div>
               </>
             ) : null}

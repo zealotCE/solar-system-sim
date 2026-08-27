@@ -14,6 +14,9 @@ import {
 import { useSimulation } from '@/hooks/useSimulation'
 import { MOON_ORBIT_MAX_SEGMENTS } from '@/lib/screenSpaceLod'
 import {
+  LABEL_FOCUSED_UPDATE_EPS,
+  LABEL_IDLE_UPDATE_EPS,
+  createContinuousHtmlPosition,
   createStableHtmlPosition,
   selectDistanceDetailVisibility,
 } from '@/lib/sceneLabels'
@@ -40,6 +43,7 @@ export function Moon({ moon, parent }: MoonProps) {
     selectPlanet,
     selectedPlanetId,
     showLabels,
+    showAllLabels,
     showOrbits,
     planetScale,
     eccentricityScale,
@@ -58,10 +62,17 @@ export function Moon({ moon, parent }: MoonProps) {
   const radius = getMoonVisualRadius(moon, trueScale)
   const parentRadius = getPlanetVisualRadius(parent, trueScale)
   const orbitLineRadius = getMoonLocalOrbitRadius(moon, parent, trueScale)
-  const calculateLabelPosition = useMemo(
+  const stableLabelPosition = useMemo(
     () => createStableHtmlPosition(),
     [],
   )
+  const continuousLabelPosition = useMemo(
+    () => createContinuousHtmlPosition(),
+    [],
+  )
+  const calculateLabelPosition = selected
+    ? continuousLabelPosition
+    : stableLabelPosition
   // Reveal distance for the label (and, in true scale, the pixel hit sphere):
   // roughly "the camera is inspecting this planet system".
   const labelDistance = trueScale
@@ -124,64 +135,66 @@ export function Moon({ moon, parent }: MoonProps) {
         />
       ) : null}
 
-      <group ref={groupRef} visible={selected || detailVisible}>
-        {trueScale ? (
-          <mesh
-            ref={hitRef}
-            onClick={(event) => {
-              event.stopPropagation()
-              selectPlanet(moon.id)
-            }}
-            onPointerOver={() => {
-              document.body.style.cursor = 'pointer'
-            }}
-            onPointerOut={() => {
-              document.body.style.cursor = 'auto'
-            }}
-          >
-            <sphereGeometry args={[1, 8, 8]} />
-            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-          </mesh>
-        ) : null}
-        <group ref={visualRef}>
-          <mesh
-            ref={meshRef}
-            onClick={(event) => {
-              event.stopPropagation()
-              selectPlanet(moon.id)
-            }}
-            onPointerOver={() => {
-              document.body.style.cursor = 'pointer'
-            }}
-            onPointerOut={() => {
-              document.body.style.cursor = 'auto'
-            }}
-          >
-            <sphereGeometry args={[radius, 40, 40]} />
-            <meshStandardMaterial
-              map={texture}
-              color={isPhoto ? '#ffffff' : moon.color}
-              transparent={false}
-              opacity={1}
-              depthTest
-              depthWrite
-              roughness={0.92}
-              metalness={0.04}
-              emissive={selected ? '#6b655c' : '#1a1816'}
-              emissiveIntensity={selected ? 0.16 : isPhoto ? 0.015 : 0.035}
-            />
-          </mesh>
-          {selected && !trueScale ? (
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <torusGeometry args={[radius * 1.75, radius * 0.075, 8, 64]} />
-              <meshBasicMaterial color="#f4dfb2" transparent opacity={0.85} depthWrite={false} />
+      <group ref={groupRef}>
+        <group visible={selected || detailVisible}>
+          {trueScale ? (
+            <mesh
+              ref={hitRef}
+              onClick={(event) => {
+                event.stopPropagation()
+                selectPlanet(moon.id)
+              }}
+              onPointerOver={() => {
+                document.body.style.cursor = 'pointer'
+              }}
+              onPointerOut={() => {
+                document.body.style.cursor = 'auto'
+              }}
+            >
+              <sphereGeometry args={[1, 8, 8]} />
+              <meshBasicMaterial transparent opacity={0} depthWrite={false} />
             </mesh>
           ) : null}
+          <group ref={visualRef}>
+            <mesh
+              ref={meshRef}
+              onClick={(event) => {
+                event.stopPropagation()
+                selectPlanet(moon.id)
+              }}
+              onPointerOver={() => {
+                document.body.style.cursor = 'pointer'
+              }}
+              onPointerOut={() => {
+                document.body.style.cursor = 'auto'
+              }}
+            >
+              <sphereGeometry args={[radius, 40, 40]} />
+              <meshStandardMaterial
+                map={texture}
+                color={isPhoto ? '#ffffff' : moon.color}
+                transparent={false}
+                opacity={1}
+                depthTest
+                depthWrite
+                roughness={0.92}
+                metalness={0.04}
+                emissive={selected ? '#6b655c' : '#1a1816'}
+                emissiveIntensity={selected ? 0.16 : isPhoto ? 0.015 : 0.035}
+              />
+            </mesh>
+            {selected && !trueScale ? (
+              <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <torusGeometry args={[radius * 1.75, radius * 0.075, 8, 64]} />
+                <meshBasicMaterial color="#f4dfb2" transparent opacity={0.85} depthWrite={false} />
+              </mesh>
+            ) : null}
+          </group>
         </group>
-        {showLabels && (selected || detailVisible) ? (
+        {showLabels && (selected || detailVisible || showAllLabels) ? (
           <Html
             center
-            eps={0.25}
+            eps={selected ? LABEL_FOCUSED_UPDATE_EPS : LABEL_IDLE_UPDATE_EPS}
             calculatePosition={calculateLabelPosition}
             zIndexRange={[12, 0]}
             style={{ pointerEvents: 'none' }}

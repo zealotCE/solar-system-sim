@@ -224,6 +224,10 @@ export const SPACECRAFT: SpacecraftData[] = [
     kind: 'deep-probe',
     color: '#f6c86b',
     ...horizonsTrajectory('cassini'),
+    orbitNote:
+      '日心坐标中的土星巡游：土星公转叠加卡西尼绕行与卫星借力，因此轨迹呈连续波浪/螺旋，而非固定椭圆',
+    orbitNoteEn:
+      'SUN-CENTERED SATURN TOUR · Saturn’s solar motion combines with Cassini’s local orbits and moon assists, producing continuous waves/loops rather than one fixed ellipse.',
     description:
       '首个土星轨道器，在土星系统工作十三年。它发现了恩克拉多斯喷出的冰羽流、记录泰坦甲烷海，并以“壮丽终章”冲入土星大气保护潜在宜居卫星。',
     descriptionEn:
@@ -243,6 +247,10 @@ export const SPACECRAFT: SpacecraftData[] = [
     kind: 'deep-probe',
     color: '#d8b58a',
     ...horizonsTrajectory('galileo'),
+    orbitNote:
+      '日心坐标中的木星巡游：木星公转叠加伽利略绕行与卫星借力，因此轨迹呈连续波浪/螺旋，而非固定椭圆',
+    orbitNoteEn:
+      'SUN-CENTERED JUPITER TOUR · Jupiter’s solar motion combines with Galileo’s local orbits and moon assists, producing continuous waves/loops rather than one fixed ellipse.',
     description:
       '首个木星轨道器，也是首个向巨行星大气投放探测器的任务。它提供了欧罗巴地下海洋的重要证据，并近距离研究了木卫一火山与木星磁层。',
     descriptionEn:

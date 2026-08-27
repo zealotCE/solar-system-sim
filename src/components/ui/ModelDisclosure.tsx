@@ -33,8 +33,8 @@ export function ModelDisclosure() {
           </h2>
           <p className="mt-2 text-[11px] leading-relaxed text-slate-300/75">
             {pureChinese
-              ? '行星位置采用 JPL 近似位置根数（1800–2050 有效），深空探测器轨迹来自 JPL Horizons 离线状态矢量。默认视图为艺术化比例；开启真实比例后半径与轨道严格同比例。'
-              : 'Planet positions use JPL approximate elements (valid 1800–2050); deep-space probe tracks come from offline JPL Horizons state vectors. The default view is stylized; true-scale mode maps radii and orbits with one shared scale.'}
+              ? '行星位置采用 JPL 近似位置根数（1800–2050 有效），深空探测器轨迹来自 JPL Horizons 离线状态矢量。主小行星带与柯伊伯带为统计分布示意，并非逐颗天体目录。默认视图为艺术化比例；开启真实比例后半径与轨道严格同比例。'
+              : 'Planet positions use JPL approximate elements (valid 1800–2050); deep-space probe tracks come from offline JPL Horizons state vectors. The main asteroid and Kuiper belts are statistical populations, not object-by-object catalogs. The default view is stylized; true-scale mode maps radii and orbits with one shared scale.'}
           </p>
           <div className="mt-3 grid grid-cols-3 gap-1.5 text-[9px] text-slate-400">
             {[

@@ -25,6 +25,12 @@ import {
   localized,
   nextLanguageMode,
 } from '@/lib/language'
+import { nextLabelMode } from '@/lib/labelModes'
+import {
+  DATE_SCRUBBER_MAX_DAY,
+  dateInputToScrubberDay,
+  scrubberDayToDateInput,
+} from '@/lib/dateScrubber'
 import {
   dateInputToSimTime,
   formatSimDate,
@@ -136,6 +142,7 @@ function DateJump() {
 
   const selectedDate = pickerDate
   const selectedCalendarDate = parseCalendarDate(selectedDate)
+  const selectedScrubberDay = dateInputToScrubberDay(selectedDate)
   const today = new Date()
   const todayDate = formatCalendarDate({
     year: today.getUTCFullYear(),
@@ -191,11 +198,27 @@ function DateJump() {
         ? viewYear >= MAX_CALENDAR_YEAR
         : viewYear === MAX_CALENDAR_YEAR && viewMonth === 11
 
+  const previewScrubberDay = (day: number) => {
+    setPickerDate(scrubberDayToDateInput(day))
+  }
+
+  const commitScrubberDay = (day: number) => {
+    const value = scrubberDayToDateInput(day)
+    const date = parseCalendarDate(value)
+    setPickerDate(value)
+    setViewYear(date.year)
+    setViewMonth(date.month)
+    setView('days')
+    const next = dateInputToSimTime(value)
+    if (next !== null) setSimulationTime(next)
+  }
+
   return (
     <div ref={containerRef} className="relative">
       <button
         type="button"
         className="time-step"
+        data-date-jump
         data-active={open}
         onClick={openCalendar}
         title={pureChinese ? '时间机器：跳转到指定日期' : 'Time machine: jump to a date'}
@@ -219,6 +242,44 @@ function DateJump() {
               <p className="date-popover-range">1950.01.01 — 2050.12.31</p>
             </div>
             <span className="date-popover-selected">{selectedDate.replaceAll('-', '.')}</span>
+          </div>
+
+          <div className="date-scrubber">
+            <div className="date-scrubber-heading">
+              <span>{pureChinese ? '快速年代' : 'QUICK DATE SCRUB'}</span>
+              <strong>{selectedCalendarDate.year}</strong>
+            </div>
+            <Slider
+              className="date-scrubber-slider"
+              data-date-scrubber
+              min={0}
+              max={DATE_SCRUBBER_MAX_DAY}
+              step={1}
+              value={[selectedScrubberDay]}
+              onValueChange={(value) => {
+                const day = value[0]
+                if (typeof day === 'number') previewScrubberDay(day)
+              }}
+              onValueCommit={(value) => {
+                const day = value[0]
+                if (typeof day === 'number') commitScrubberDay(day)
+              }}
+              aria-label={
+                pureChinese
+                  ? '快速选择 1950 至 2050 年的日期'
+                  : 'Quickly choose a date from 1950 to 2050'
+              }
+              thumbAriaLabel={
+                pureChinese
+                  ? '快速选择 1950 至 2050 年的日期'
+                  : 'Quickly choose a date from 1950 to 2050'
+              }
+            />
+            <div className="date-scrubber-scale" aria-hidden="true">
+              <span>1950</span>
+              <span>2000</span>
+              <span>2050</span>
+            </div>
           </div>
 
           <div className="date-calendar-header">
@@ -382,8 +443,8 @@ export function TimeControls({
     setTimeDirection,
     showOrbits,
     setShowOrbits,
-    showLabels,
-    setShowLabels,
+    labelMode,
+    cycleLabelMode,
     resetCamera,
     followPlanet,
     selectedPlanetId,
@@ -394,10 +455,20 @@ export function TimeControls({
     englishOnly,
     setLanguageMode,
   } = useSimulation()
+  const labelModeName = englishOnly
+    ? { off: 'off', primary: 'primary', all: 'all' }[labelMode]
+    : { off: '关', primary: '主要', all: '全部' }[labelMode]
+  const nextLabelModeName = englishOnly
+    ? { off: 'off', primary: 'primary', all: 'all' }[
+        nextLabelMode(labelMode)
+      ]
+    : { off: '关', primary: '主要', all: '全部' }[
+        nextLabelMode(labelMode)
+      ]
 
   return (
     <div className="control-deck">
-      <div className="flex items-center gap-3 border-b border-white/[0.06] pb-3 md:border-b-0 md:border-r md:pb-0 md:pr-4">
+      <div className="playback-controls flex items-center gap-3 border-b border-white/[0.06] pb-3 md:border-b-0 md:border-r md:pb-0 md:pr-4">
         <button
           type="button"
           className="play-control"
@@ -467,7 +538,7 @@ export function TimeControls({
         </div>
       </div>
 
-      <div className="min-w-0 flex-1 md:px-4">
+      <div className="timeline-controls min-w-0 flex-1 md:px-4">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="eyebrow">{pureChinese ? '时间速率' : 'TIME VELOCITY'}</span>
@@ -510,6 +581,7 @@ export function TimeControls({
               if (typeof next === 'number') setSpeed(sliderToSpeed(next))
             }}
             aria-label={pureChinese ? '模拟速度' : 'Simulation speed'}
+            thumbAriaLabel={pureChinese ? '模拟速度' : 'Simulation speed'}
           />
           <div className="hidden gap-1 lg:flex">
             {QUICK_SPEEDS.map((quickSpeed) => (
@@ -535,8 +607,8 @@ export function TimeControls({
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-1.5 border-t border-white/[0.06] pt-3 md:border-l md:border-t-0 md:pl-4 md:pt-0">
-        <div className="flex items-center gap-1.5">
+      <div className="control-actions flex items-center justify-between gap-1.5 border-t border-white/[0.06] pt-3 md:border-l md:border-t-0 md:pl-4 md:pt-0">
+        <div className="scene-tools flex items-center gap-1.5">
         <Button
           variant={showOrbits ? 'default' : 'secondary'}
           size="icon"
@@ -548,14 +620,28 @@ export function TimeControls({
           <Orbit />
         </Button>
         <Button
-          variant={showLabels ? 'default' : 'secondary'}
+          variant={labelMode === 'off' ? 'secondary' : 'default'}
           size="icon"
-          className="control-tool"
-          onClick={() => setShowLabels(!showLabels)}
-          title={englishOnly ? 'Show object labels' : '显示天体名称'}
-          aria-pressed={showLabels}
+          className="control-tool relative"
+          data-label-mode={labelMode}
+          onClick={cycleLabelMode}
+          title={
+            englishOnly
+              ? `Labels: ${labelModeName}; click for ${nextLabelModeName}`
+              : `标签：${labelModeName}；点击切换为${nextLabelModeName}`
+          }
+          aria-label={
+            englishOnly
+              ? `Labels: ${labelModeName}. Switch to ${nextLabelModeName}`
+              : `标签：${labelModeName}。切换为${nextLabelModeName}`
+          }
         >
           <Tag />
+          <span className="control-tool-badge" aria-hidden="true">
+            {englishOnly
+              ? { off: '0', primary: 'P', all: 'A' }[labelMode]
+              : { off: '关', primary: '主', all: '全' }[labelMode]}
+          </span>
         </Button>
         <Button
           variant={followPlanet ? 'default' : 'secondary'}
@@ -587,11 +673,11 @@ export function TimeControls({
           <Maximize2 />
         </Button>
         </div>
-        <div className="ml-2 flex items-center gap-1.5">
+        <div className="panel-tools ml-2 flex items-center gap-1.5">
           <Button
             variant={languageMode === 'bilingual' ? 'outline' : 'default'}
             size="icon"
-            className="control-tool relative"
+            className="language-tool control-tool relative"
             onClick={() => setLanguageMode(nextLanguageMode(languageMode))}
             aria-label={localized(
               languageMode,
@@ -616,18 +702,19 @@ export function TimeControls({
             return (
               <Button
                 key={id}
+                data-panel-id={id}
                 variant={active ? 'default' : 'outline'}
                 size="sm"
                 className={
                   active
-                    ? 'relative h-9 rounded-xl px-3'
-                    : 'relative h-9 rounded-xl border-cyan-200/16 px-3 text-slate-200'
+                    ? 'panel-button relative h-9 rounded-xl px-3'
+                    : 'panel-button relative h-9 rounded-xl border-cyan-200/16 px-3 text-slate-200'
                 }
                 onClick={() => onTogglePanel(id)}
                 aria-pressed={active}
               >
                 <Icon />
-                <span className="hidden sm:inline">
+                <span className="panel-button-label hidden sm:inline">
                   {englishOnly ? en : zh}
                 </span>
                 {id === 'archive' && selectedPlanetId && !active ? (

@@ -604,6 +604,45 @@ button,
   font-size: 8px;
 }
 
+.date-scrubber {
+  margin: 9px 2px 3px;
+  padding: 8px 9px 6px;
+  border: 1px solid rgba(103, 232, 249, 0.08);
+  border-radius: 8px;
+  background: rgba(14, 116, 144, 0.035);
+}
+
+.date-scrubber-heading,
+.date-scrubber-scale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+}
+
+.date-scrubber-heading {
+  margin-bottom: 4px;
+  color: rgba(148, 163, 184, 0.62);
+  font-size: 7px;
+  letter-spacing: 0.12em;
+}
+
+.date-scrubber-heading strong {
+  color: rgba(253, 230, 138, 0.84);
+  font-size: 8px;
+  font-weight: 500;
+}
+
+.date-scrubber-slider {
+  height: 19px;
+}
+
+.date-scrubber-scale {
+  margin-top: 1px;
+  color: rgba(100, 116, 139, 0.54);
+  font-size: 6px;
+}
+
 .date-calendar-header {
   display: grid;
   grid-template-columns: 28px 1fr 28px;
@@ -787,6 +826,27 @@ button,
   border-radius: 10px;
 }
 
+.control-tool-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 4px;
+  color: rgba(224, 242, 254, 0.92);
+  background: #071321;
+  font-family: var(--font-mono);
+  font-size: 7px;
+  line-height: 11px;
+  text-align: center;
+}
+
+.control-tool[data-label-mode='all'] {
+  box-shadow: 0 0 12px rgba(103, 232, 249, 0.18);
+}
+
 .eyebrow {
   color: rgba(186, 230, 253, 0.5);
   font-family: var(--font-display);
@@ -871,6 +931,29 @@ button,
   letter-spacing: 0.05em;
   color: rgba(203, 213, 225, 0.78);
   border-color: rgba(148, 163, 184, 0.14);
+}
+
+.kuiper-belt-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  border-left: 1px solid rgba(125, 211, 252, 0.38);
+  color: rgba(186, 230, 253, 0.72);
+  background: linear-gradient(90deg, rgba(4, 15, 27, 0.68), transparent);
+  font-family: var(--font-display);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  line-height: 1.25;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+}
+
+.kuiper-belt-label small {
+  color: rgba(148, 163, 184, 0.58);
+  font-family: var(--font-mono);
+  font-size: 6px;
+  letter-spacing: 0.08em;
 }
 
 .craft-label {
@@ -1271,6 +1354,7 @@ button,
 }
 
 .trajectory-legend-swatch--actual::before,
+.trajectory-legend-swatch--known-future::before,
 .trajectory-legend-swatch--predicted::before {
   position: absolute;
   top: 5px;
@@ -1284,8 +1368,17 @@ button,
   background: linear-gradient(90deg, rgba(125, 211, 252, 0.16), #bae6fd);
 }
 
+.trajectory-legend-swatch--known-future::before {
+  opacity: 0.52;
+  background: repeating-linear-gradient(
+    90deg,
+    #f4d28a 0 3px,
+    transparent 3px 5px
+  );
+}
+
 .trajectory-legend-swatch--predicted::before {
-  opacity: 0.42;
+  opacity: 0.32;
   background: repeating-linear-gradient(
     90deg,
     #7dd3fc 0 4px,
@@ -1313,6 +1406,19 @@ button,
   width: 3px;
   height: 3px;
   background: #7dd3fc;
+}
+
+.trajectory-legend-swatch--planet-orbit::before {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  width: 22px;
+  height: 8px;
+  border: 1.5px solid rgba(125, 211, 252, 0.8);
+  border-radius: 50%;
+  content: '';
+  box-shadow: 0 0 5px rgba(56, 189, 248, 0.22);
+  transform: rotate(-10deg);
 }
 
 .trajectory-legend-swatch--osculating::before {
@@ -1541,6 +1647,65 @@ canvas {
   }
 }
 
+@media (min-width: 768px) and (max-width: 1180px) {
+  .control-deck {
+    padding-inline: 10px;
+  }
+
+  .playback-controls {
+    gap: 8px;
+    padding-right: 8px;
+  }
+
+  .playback-controls .min-w-\[74px\] {
+    min-width: 50px;
+  }
+
+  .timeline-controls {
+    min-width: 110px;
+    padding-inline: 9px;
+  }
+
+  .control-actions {
+    min-width: 0;
+    gap: 3px;
+    padding-left: 9px;
+  }
+
+  .scene-tools,
+  .panel-tools {
+    gap: 3px;
+  }
+
+  .panel-tools {
+    min-width: 0;
+    margin-left: 3px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .panel-tools::-webkit-scrollbar {
+    display: none;
+  }
+
+  .panel-button {
+    width: 36px;
+    min-width: 36px;
+    padding-inline: 0;
+  }
+
+  .panel-button-label {
+    display: none !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 900px) {
+  .scene-tools .control-tool:nth-child(4),
+  .scene-tools .control-tool:nth-child(5) {
+    display: none;
+  }
+}
+
 @media (max-width: 767px) {
   .hud-frame {
     inset: 5px;
@@ -1570,6 +1735,27 @@ canvas {
 
   .control-deck {
     max-height: 190px;
+  }
+
+  .control-actions,
+  .panel-tools {
+    min-width: 0;
+  }
+
+  .panel-tools {
+    margin-left: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .panel-button {
+    width: 36px;
+    min-width: 36px;
+    padding-inline: 0;
+  }
+
+  .panel-button-label {
+    display: none !important;
   }
 
   .body-orbital-portrait {

@@ -5,7 +5,12 @@ import * as THREE from 'three'
 
 import { getPlanetPosition, getPlanetVisualRadius, type PlanetData } from '@/data/planets'
 import { useSimulation } from '@/hooks/useSimulation'
-import { createStableHtmlPosition } from '@/lib/sceneLabels'
+import {
+  LABEL_FOCUSED_UPDATE_EPS,
+  LABEL_IDLE_UPDATE_EPS,
+  createContinuousHtmlPosition,
+  createStableHtmlPosition,
+} from '@/lib/sceneLabels'
 import { EARTH_CLOUDS_URL, useBodySurface, useFileTexture } from '@/lib/textureAssets'
 import { Moon } from './Moon'
 import { PlanetRings } from './PlanetRings'
@@ -46,10 +51,17 @@ export function Planet({ planet }: PlanetProps) {
   )
   const selected = selectedPlanetId === planet.id
   const radius = getPlanetVisualRadius(planet, trueScale)
-  const calculateLabelPosition = useMemo(
+  const stableLabelPosition = useMemo(
     () => createStableHtmlPosition(),
     [],
   )
+  const continuousLabelPosition = useMemo(
+    () => createContinuousHtmlPosition(),
+    [],
+  )
+  const calculateLabelPosition = selected
+    ? continuousLabelPosition
+    : stableLabelPosition
 
   useFrame(({ camera }) => {
     if (!groupRef.current || !meshRef.current || !visualRef.current) return
@@ -193,7 +205,7 @@ export function Planet({ planet }: PlanetProps) {
       {showLabels ? (
         <Html
           center
-          eps={0.25}
+          eps={selected ? LABEL_FOCUSED_UPDATE_EPS : LABEL_IDLE_UPDATE_EPS}
           calculatePosition={calculateLabelPosition}
           zIndexRange={[12, 0]}
           style={{ pointerEvents: 'none' }}

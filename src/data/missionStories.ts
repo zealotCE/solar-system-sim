@@ -8,7 +8,7 @@ export type MissionStoryEvent = {
   narrativeEn: string
   craftId: string
   relatedTargetIds: string[]
-  /** Existing scene target to select and follow when this event is applied. */
+  /** Encounter/context body shown in the story; playback follows the craft. */
   focusTargetId: string
   sourceUrl: string
 }
@@ -180,6 +180,13 @@ export const MISSION_STORIES: MissionStory[] = [
 
 export function getMissionStoryEvent(storyId: string, eventId: string): MissionStoryEvent | null {
   return MISSION_STORIES.find((story) => story.id === storyId)?.events.find((event) => event.id === eventId) ?? null
+}
+
+/** Historical playback always follows the observer spacecraft through the event. */
+export function getMissionStoryPlaybackTarget(
+  event: MissionStoryEvent,
+): string {
+  return event.craftId
 }
 
 /** Returns the historical timeline owned by a spacecraft archive, if one exists. */

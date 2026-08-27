@@ -10,6 +10,8 @@ type CraftGlbModelProps = {
   fitSpan?: number
   /** Apply bounded studio lighting to a non-physical identification model. */
   identification?: boolean
+  /** Optional alpha used only by an explicitly screen-space identification layer. */
+  identificationOpacity?: number
   /** Rendered while loading and if the model fails to load. */
   fallback?: ReactNode
 }
@@ -45,7 +47,11 @@ function createIdentificationMatcap(): THREE.DataTexture {
 const IDENTIFICATION_MATCAP = createIdentificationMatcap()
 const IDENTIFICATION_COLOR_LIFT = new THREE.Color('#aeb9c4')
 
-function createIdentificationMaterial(source: THREE.MeshStandardMaterial) {
+function createIdentificationMaterial(
+  source: THREE.MeshStandardMaterial,
+  opacity = 1,
+) {
+  const presentationOpacity = THREE.MathUtils.clamp(opacity, 0, 1)
   const material = new THREE.MeshMatcapMaterial({
     color: source.color,
     matcap: IDENTIFICATION_MATCAP,
@@ -72,6 +78,9 @@ function createIdentificationMaterial(source: THREE.MeshStandardMaterial) {
   })
   material.name = `${source.name || 'craft'} · identification`
   material.color.lerp(IDENTIFICATION_COLOR_LIFT, 0.1)
+  material.transparent = source.transparent || presentationOpacity < 1
+  material.opacity = Math.min(source.opacity, presentationOpacity)
+  material.depthWrite = presentationOpacity >= 1 && source.depthWrite
   return material
 }
 
@@ -80,11 +89,13 @@ function NormalizedGltf({
   fitRadius,
   fitSpan,
   identification,
+  identificationOpacity,
 }: {
   url: string
   fitRadius?: number
   fitSpan?: number
   identification?: boolean
+  identificationOpacity?: number
 }) {
   const { scene } = useGLTF(url)
   const normalized = useMemo(() => {
@@ -103,7 +114,10 @@ function NormalizedGltf({
             // A neutral matcap bakes restrained key/fill shading into this
             // proxy only. It preserves maps and normal detail without adding a
             // scene light, emissive channel, or Bloom-producing halo.
-            const presentation = createIdentificationMaterial(next)
+            const presentation = createIdentificationMaterial(
+              next,
+              identificationOpacity,
+            )
             next.dispose()
             return presentation
           }
@@ -132,7 +146,7 @@ function NormalizedGltf({
           : 1
     pivot.scale.setScalar(scale)
     return pivot
-  }, [scene, fitRadius, fitSpan, identification])
+  }, [scene, fitRadius, fitSpan, identification, identificationOpacity])
   return <primitive object={normalized} />
 }
 
@@ -165,6 +179,7 @@ export function CraftGlbModel({
   fitRadius,
   fitSpan,
   identification = false,
+  identificationOpacity,
   fallback = null,
 }: CraftGlbModelProps) {
   return (
@@ -175,6 +190,7 @@ export function CraftGlbModel({
           fitRadius={fitRadius}
           fitSpan={fitSpan}
           identification={identification}
+          identificationOpacity={identificationOpacity}
         />
       </Suspense>
     </GlbErrorBoundary>
