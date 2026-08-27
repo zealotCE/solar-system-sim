@@ -221,7 +221,9 @@ export function TargetList({ onPicked }: TargetListProps) {
       <div className="flex items-center justify-between px-1">
         <div className="flex items-center gap-2 text-[10px] text-slate-400">
           <Sparkle className="size-3.5 text-amber-200/70" />
-          {englishOnly ? 'Select a target to follow and open its archive' : '点击目标即锁定跟随并打开档案'}
+          {englishOnly
+            ? 'Select a target to focus or open its archive'
+            : '点击目标聚焦场景或打开档案'}
         </div>
         <span className="status-chip">
           <Rocket className="size-2.5" />

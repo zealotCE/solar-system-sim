@@ -100,6 +100,7 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
             url={officialModel.url}
             fitRadius={trueScale ? undefined : radius}
             fitSpan={trueScale ? radius * 2 : undefined}
+            identification
             fallback={null}
           />
         ) : (

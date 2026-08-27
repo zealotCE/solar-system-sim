@@ -8,7 +8,11 @@ export type TimedTrailPoint = readonly [
 
 export type TrajectoryDataStatus = 'actual' | 'predicted'
 export type TrajectorySegmentSemantic = TrajectoryDataStatus
-export type OrbitLineSemantic = 'reference' | 'osculating'
+export type OrbitLineSemantic = 'reference' | 'osculating' | 'artificial'
+export type ArtificialTrailDisplayMode = 'recent' | 'full'
+
+export const HORIZONS_RECENT_TRAIL_DAYS = 365.25
+export const ARTIFICIAL_ORBIT_RECENT_FRACTION = 0.2
 
 export type SemanticLineStyle = Readonly<{
   opacity: number
@@ -22,16 +26,16 @@ export type SemanticLineStyle = Readonly<{
 const TRAJECTORY_LINE_STYLES = {
   actual: {
     normal: {
-      opacity: 0.48,
-      lineWidth: 1,
+      opacity: 0.58,
+      lineWidth: 0.78,
       dashed: false,
       dashScale: 1,
       dashSize: 1,
       gapSize: 0,
     },
     active: {
-      opacity: 0.92,
-      lineWidth: 1.7,
+      opacity: 0.84,
+      lineWidth: 1.08,
       dashed: false,
       dashScale: 1,
       dashSize: 1,
@@ -40,16 +44,16 @@ const TRAJECTORY_LINE_STYLES = {
   },
   predicted: {
     normal: {
-      opacity: 0.18,
-      lineWidth: 0.82,
+      opacity: 0.24,
+      lineWidth: 0.68,
       dashed: true,
       dashScale: 3,
       dashSize: 0.9,
       gapSize: 0.65,
     },
     active: {
-      opacity: 0.38,
-      lineWidth: 1.3,
+      opacity: 0.42,
+      lineWidth: 0.88,
       dashed: true,
       dashScale: 3,
       dashSize: 0.9,
@@ -98,12 +102,30 @@ const ORBIT_LINE_STYLES = {
       gapSize: 0,
     },
   },
+  artificial: {
+    normal: {
+      opacity: 0.42,
+      lineWidth: 0.68,
+      dashed: false,
+      dashScale: 1,
+      dashSize: 1,
+      gapSize: 0,
+    },
+    active: {
+      opacity: 0.68,
+      lineWidth: 1,
+      dashed: false,
+      dashScale: 1,
+      dashSize: 1,
+      gapSize: 0,
+    },
+  },
 } as const satisfies Record<
   OrbitLineSemantic,
   Record<'normal' | 'active', SemanticLineStyle>
 >
 
-export const ACTUAL_TRAJECTORY_GRADIENT_START = 0.16
+export const ACTUAL_TRAJECTORY_GRADIENT_START = 0.42
 export const ACTUAL_TRAJECTORY_GRADIENT_POWER = 1.35
 export const TRAJECTORY_CURSOR_MIN_PIXELS = 7
 export const TRAJECTORY_CURSOR_MAX_PIXELS = 11
@@ -151,6 +173,12 @@ export function getTrajectoryCursorDiameterPixels(viewportHeight: number): numbe
   )
 }
 
+export type TimedTrailDisplayWindow = Readonly<{
+  mode: ArtificialTrailDisplayMode
+  startJdTdb: number
+  endJdTdb: number
+}>
+
 function interpolateTimedTrailPoint(
   before: TimedTrailPoint,
   after: TimedTrailPoint,
@@ -164,6 +192,124 @@ function interpolateTimedTrailPoint(
     before[2] + (after[2] - before[2]) * amount,
     before[3] + (after[3] - before[3]) * amount,
   ]
+}
+
+function getTimedTrailPointAtJd(
+  points: readonly TimedTrailPoint[],
+  jdTdb: number,
+): TimedTrailPoint {
+  const first = points[0]
+  const last = points.at(-1)!
+  if (jdTdb <= first[0]) return first
+  if (jdTdb >= last[0]) return last
+
+  let low = 0
+  let high = points.length - 1
+  while (high - low > 1) {
+    const middle = (low + high) >> 1
+    if (points[middle][0] <= jdTdb) low = middle
+    else high = middle
+  }
+  if (points[low][0] === jdTdb) return points[low]
+  if (points[high][0] === jdTdb) return points[high]
+  return interpolateTimedTrailPoint(points[low], points[high], jdTdb)
+}
+
+function getFirstTimedTrailIndexAfter(
+  points: readonly TimedTrailPoint[],
+  jdTdb: number,
+): number {
+  let low = 0
+  let high = points.length
+  while (low < high) {
+    const middle = (low + high) >> 1
+    if (points[middle][0] <= jdTdb) low = middle + 1
+    else high = middle
+  }
+  return low
+}
+
+/**
+ * Inclusive time clipping for a rendered polyline. Interpolated boundary
+ * vertices make a recent trail terminate on the same rendered segment as the
+ * complete path, even when the model clock falls between source vertices.
+ */
+export function sliceTimedTrailToWindow(
+  points: readonly TimedTrailPoint[],
+  startJdTdb: number,
+  endJdTdb: number,
+): TimedTrailPoint[] {
+  if (
+    points.length === 0 ||
+    !Number.isFinite(startJdTdb) ||
+    !Number.isFinite(endJdTdb) ||
+    endJdTdb < startJdTdb
+  ) {
+    return []
+  }
+
+  const firstJdTdb = points[0][0]
+  const lastJdTdb = points.at(-1)![0]
+  const clippedStart = Math.max(firstJdTdb, startJdTdb)
+  const clippedEnd = Math.min(lastJdTdb, endJdTdb)
+  if (clippedEnd < clippedStart) return []
+
+  const start = getTimedTrailPointAtJd(points, clippedStart)
+  if (clippedStart === clippedEnd) return [start]
+
+  const result = [start]
+  const firstInterior = getFirstTimedTrailIndexAfter(points, clippedStart)
+  for (
+    let index = firstInterior;
+    index < points.length && points[index][0] < clippedEnd;
+    index += 1
+  ) {
+    result.push(points[index])
+  }
+  result.push(getTimedTrailPointAtJd(points, clippedEnd))
+  return result
+}
+
+/** Selected artificial paths always expose complete loaded coverage. */
+export function getArtificialTrailDisplayMode(
+  selected: boolean,
+): ArtificialTrailDisplayMode {
+  return selected ? 'full' : 'recent'
+}
+
+export function getArtificialOrbitVisibleFraction(selected: boolean): number {
+  return selected ? 1 : ARTIFICIAL_ORBIT_RECENT_FRACTION
+}
+
+export function getTimedTrailDisplayWindow(
+  points: readonly TimedTrailPoint[],
+  currentJdTdb: number,
+  selected: boolean,
+): TimedTrailDisplayWindow | null {
+  if (points.length === 0) return null
+  const firstJdTdb = points[0][0]
+  const lastJdTdb = points.at(-1)![0]
+  const mode = getArtificialTrailDisplayMode(selected)
+  if (mode === 'full') {
+    return { mode, startJdTdb: firstJdTdb, endJdTdb: lastJdTdb }
+  }
+  if (!Number.isFinite(currentJdTdb)) return null
+  const endJdTdb = Math.min(lastJdTdb, Math.max(firstJdTdb, currentJdTdb))
+  return {
+    mode,
+    startJdTdb: Math.max(firstJdTdb, endJdTdb - HORIZONS_RECENT_TRAIL_DAYS),
+    endJdTdb,
+  }
+}
+
+export function getTimedTrailForDisplay(
+  points: readonly TimedTrailPoint[],
+  currentJdTdb: number,
+  selected: boolean,
+): TimedTrailPoint[] {
+  const window = getTimedTrailDisplayWindow(points, currentJdTdb, selected)
+  if (!window) return []
+  return sliceTimedTrailToWindow(points, window.startJdTdb, window.endJdTdb)
 }
 
 export type TrajectorySemanticSegments = Readonly<{

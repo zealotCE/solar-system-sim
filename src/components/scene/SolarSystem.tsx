@@ -26,8 +26,10 @@ import {
 } from '@/data/minorBodies'
 import {
   getCraftFocusRadius,
+  getDeepProbeTrailLodGuide,
   getSpacecraftById,
   getSpacecraftPosition,
+  isCraftTrailOnlyArchiveVisible,
 } from '@/data/spacecraft'
 import { useScreenSpaceLod } from '@/hooks/useScreenSpaceLod'
 import { useSimulation } from '@/hooks/useSimulation'
@@ -94,6 +96,7 @@ function CameraRig() {
   const {
     followPlanet,
     selectedPlanetId,
+    simTime,
     simTimeRef,
     cameraResetNonce,
     focusNonce,
@@ -107,6 +110,30 @@ function CameraRig() {
   const selectedCraft = getSpacecraftById(selectedPlanetId)
   const selectedTrajectory = useTrajectory(selectedCraft?.trajectoryId ?? null)
   const selectedTrajectorySamples = selectedTrajectory?.samples ?? null
+  const archiveTrailOnly = Boolean(
+    selectedCraft &&
+      isCraftTrailOnlyArchiveVisible(selectedCraft, simTime, true),
+  )
+  const archiveTrailFocus = useMemo(() => {
+    if (!archiveTrailOnly || !selectedTrajectorySamples) return null
+    const guide = getDeepProbeTrailLodGuide(
+      selectedTrajectorySamples,
+      { orbitScale, inclinationScale, trueScale },
+      129,
+    )
+    if (!guide.length) return null
+    const bounds = new THREE.Box3().setFromPoints(
+      guide.map(([x, y, z]) => new THREE.Vector3(x, y, z)),
+    )
+    const sphere = bounds.getBoundingSphere(new THREE.Sphere())
+    return { center: sphere.center, radius: sphere.radius }
+  }, [
+    archiveTrailOnly,
+    selectedTrajectorySamples,
+    orbitScale,
+    inclinationScale,
+    trueScale,
+  ])
   const followTarget = useRef(new THREE.Vector3())
   const focusAnim = useRef({ nonce: 0, active: false })
   const offsetDir = useRef(new THREE.Vector3())
@@ -131,7 +158,9 @@ function CameraRig() {
       focusAnim.current = { nonce: focusNonce, active: true }
     }
 
-    if (followPlanet && selectedPlanetId) {
+    const framingArchiveTrail =
+      archiveTrailOnly && focusAnim.current.active
+    if ((followPlanet || framingArchiveTrail) && selectedPlanetId) {
       if (
         pendingTrajectoryTarget.current &&
         pendingTrajectoryTarget.current !== selectedPlanetId
@@ -139,7 +168,14 @@ function CameraRig() {
         pendingTrajectoryTarget.current = null
       }
       const moonHit = findMoonById(selectedPlanetId)
-      if (selectedPlanetId === 'sun') {
+      if (archiveTrailOnly) {
+        if (!archiveTrailFocus) {
+          pendingTrajectoryTarget.current = selectedPlanetId
+          trackedTargetKey.current = null
+          return
+        }
+        followTarget.current.copy(archiveTrailFocus.center)
+      } else if (selectedPlanetId === 'sun') {
         followTarget.current.set(0, 0, 0)
       } else if (moonHit) {
         const [x, y, z] = getMoonWorldPosition(moonHit, simTimeRef.current, {
@@ -197,7 +233,7 @@ function CameraRig() {
       // Translate the camera by the body's frame-to-frame displacement. Merely
       // rotating toward a fast-moving target makes it escape the viewport at
       // high simulation speeds, especially for Mercury in true scale.
-      const targetKey = `${selectedPlanetId}:${trueScale}`
+      const targetKey = `${selectedPlanetId}:${trueScale}:${archiveTrailOnly ? 'archive' : 'body'}`
       if (pendingTrajectoryTarget.current === selectedPlanetId) {
         // Preserve the current camera-to-target offset when a delayed mission
         // becomes available; the pending focus flight then resumes smoothly.
@@ -217,15 +253,26 @@ function CameraRig() {
       // Star Walk-style fly-in: shortly after selecting a body, glide the camera
       // to a comfortable viewing distance while keeping the current view angle.
       if (focusAnim.current.active) {
-        const radius = getVisualRadius(selectedPlanetId, trueScale) * planetScale
-        const focusingCraft = Boolean(getSpacecraftById(selectedPlanetId))
-        const desiredDistance = trueScale
-          ? THREE.MathUtils.clamp(
-              radius * (focusingCraft ? 3 : 4.5),
-              Math.max(radius * 1.5, 0.00004),
-              90,
+        const radius = archiveTrailOnly
+          ? Math.max(
+              archiveTrailFocus?.radius ?? 0,
+              getVisualRadius(selectedPlanetId, trueScale),
             )
-          : THREE.MathUtils.clamp(radius * 4.2 + 0.35, 0.9, 24)
+          : getVisualRadius(selectedPlanetId, trueScale) * planetScale
+        const focusingCraft = Boolean(getSpacecraftById(selectedPlanetId))
+        const desiredDistance = archiveTrailOnly
+          ? THREE.MathUtils.clamp(
+              radius / Math.sin(THREE.MathUtils.degToRad(45 / 2)) * 1.12,
+              trueScale ? 0.03 : 2,
+              trueScale ? 860 : 190,
+            )
+          : trueScale
+            ? THREE.MathUtils.clamp(
+                radius * (focusingCraft ? 3 : 4.5),
+                Math.max(radius * 1.5, 0.00004),
+                90,
+              )
+            : THREE.MathUtils.clamp(radius * 4.2 + 0.35, 0.9, 24)
         offsetDir.current.copy(camera.position).sub(controls.target)
         const currentDistance = offsetDir.current.length()
         const cameraDamping = 1 - Math.exp(-9 * delta)

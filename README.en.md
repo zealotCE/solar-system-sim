@@ -27,9 +27,9 @@ An interactive 3D Solar System with a future-observatory aesthetic: eight planet
 - **1950–2050 time machine:** reverse time, choose days/months/years in a custom calendar, jump to today, and launch ten mission stories from the story or spacecraft archive. Replays pause, enable true scale, and focus the historical target to avoid stylized flyby intersections
 - **Twelve Horizons missions:** Voyager 1/2, Pioneer 10, New Horizons, Cassini, Galileo, Dawn, Rosetta, OSIRIS-REx/APEX, Lucy, Psyche, and Europa Clipper use bundled JPL Horizons state vectors. Cruise spans use 30-day samples, event windows use 1-day samples, and critical flybys use 6-hour samples, reconstructed with position-and-velocity Hermite curves
 - **Content-hashed lazy ephemerides:** the startup bundle contains only a lightweight registry. Each mission has a content-hashed JSON asset; selections, stories, and deep links load first, while other launched missions queue serially during browser idle time. Rendering reads a synchronous cache, and no monolithic trajectory payload enters the main JavaScript
-- **Trajectory semantics:** flown/known data is a solid gradient and predicted/propagated data is a dim dashed line. The model date moves a separate small circular time cursor without changing provenance status. Closed planet, moon, minor-body, and Parker lines represent instantaneous osculating orbits
+- **Semantic, decluttered trails:** unselected Horizons craft show only the latest 365.25 model-time days with a restrained fade, while simplified local craft show the latest 20% of one period; selection expands the complete semantic path. Flown/known data remains solid and predicted/propagated data dashed. Ended missions can still load and frame their full historical trail without resurrecting the physical model
 - **Screen-space LOD:** closed orbits range from 128 to 16,384 vertices by projected sagitta; Horizons trails use overview/medium/focus adaptive subdivision. LOD evaluates every 12 frames with 0.92/1.08 hysteresis, reducing distant geometry while preserving smooth selected and close views
-- **NASA 3D models:** official GLBs cover Voyager, Pioneer 10, New Horizons, Juno, Parker Solar Probe, Webb, Hubble, ISS, Cassini, Galileo, Dawn, Rosetta, OSIRIS-REx, Europa Clipper, Ceres, Vesta, and Bennu. The original 34.05 MiB Europa Clipper model is a roughly 2.6 MiB Meshopt/WebP web derivative for Pages limits
+- **Authoritative 3D shape models:** spacecraft, Ceres, Vesta, and Bennu use NASA resources; 67P, Apophis, and Arrokoth now use mapped ESA Rosetta / NASA PDS shape data. The original 34.05 MiB Europa Clipper file is a roughly 2.6 MiB Meshopt/WebP derivative. No redistributable official Tiangong mesh was found, so the station remains procedural instead of importing an unverified 140 MiB community model
 - **Minor bodies and comets:** Ceres, Vesta, Bennu, 67P, Halley, Eurybates, Psyche, Apophis, and Arrokoth use offline JPL SBDB orbital elements with 3D orientation, orbits, search, live light-time, and extended science archives
 - **Target search:** fuzzy Chinese/English search; press `/` on desktop
 - **Live readouts:** archive panels compute model-time Sun/Earth distance (AU + km) and one-way light time in an NASA Eyes-style presentation
@@ -42,7 +42,7 @@ An interactive 3D Solar System with a future-observatory aesthetic: eight planet
 - Click-to-follow targets with a smooth Star Walk-style camera flight
 - The default rate is 1× (about one Earth day per real second), adjustable from 0.01× to 1000×. Shortcuts: Space pauses, R resets the camera, `/` searches, and Esc closes a panel
 - Photographic textures can be replaced with lightweight procedural textures for lower-power devices
-- Cinematic, Observatory, and Minimal scene presets, plus ecliptic grid, spacecraft, and auto-cruise controls; physical sliders lock to 1× in true scale
+- Cinematic, Observatory, and Minimal scene presets, plus an ecliptic grid with sparse inclination drop curtains, spacecraft, and auto-cruise controls; physical sliders lock to 1× in true scale
 - Responsive desktop observatory and mobile drawers; Chinese, bilingual, and English preferences persist in the browser
 
 ## Requirements
@@ -198,7 +198,7 @@ npm run validate:data
 
 ## Asset Sources and Attribution
 
-- Spacecraft plus Ceres, Vesta, and Bennu 3D models: [NASA 3D Resources](https://science.nasa.gov/3d-resources/). Per-target archives show specific attribution and source pages; files live in `public/models/`. Europa Clipper is a web-optimized derivative of the official GLB and is attributed under NASA media usage guidance. This project is not affiliated with or endorsed by NASA
+- Spacecraft plus Ceres, Vesta, and Bennu: [NASA 3D Resources](https://science.nasa.gov/3d-resources/); 67P: [ESA / Rosetta Shape Models v2.0](https://doi.org/10.26007/34vg-8s07); Apophis: [NASA PDS / JPL Radar Shape Model v1.0](https://sbnarchive.psi.edu/pds4/non_mission/gbo.ast-apophis.jpl.radar.shape_model_v1.0/); Arrokoth: [NASA PDS / Porter 2024](https://doi.org/10.26007/97r3-1e19). Per-target archives show attribution and source pages. Web GLBs are format-converted or optimized derivatives of the source science meshes. This project is not affiliated with or endorsed by NASA or ESA
 - Planetary ephemerides: [JPL Approximate Positions of the Major Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html); minor-body orbits and physical parameters: [NASA/JPL Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html); deep-space trajectories: [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/)
 - Sun, Mercury, Venus, Earth/clouds, Mars, and Jupiter textures: [Solar System Scope Textures](https://www.solarsystemscope.com/textures/) (CC BY 4.0, based on NASA survey data)
 - Saturn, Uranus, Neptune, Pluto, and Saturn-ring textures: threex.planets, originating from Planet Pixel Emporium

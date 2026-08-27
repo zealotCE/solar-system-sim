@@ -580,6 +580,23 @@ export function isCraftSceneVisible(craft: SpacecraftData, simTime: number): boo
   return simTimeToJd(simTime) <= endJd
 }
 
+/**
+ * An ended Horizons mission can expose its archived trajectory when selected,
+ * while the physical craft remains absent from the scene.
+ */
+export function isCraftTrailOnlyArchiveVisible(
+  craft: SpacecraftData,
+  simTime: number,
+  selected: boolean,
+): boolean {
+  return (
+    selected &&
+    Boolean(craft.trajectoryId) &&
+    isCraftLaunched(craft, simTime) &&
+    !isCraftSceneVisible(craft, simTime)
+  )
+}
+
 export type CraftModifiers = {
   orbitScale?: number
   eccentricityScale?: number
@@ -1122,6 +1139,42 @@ export function getSpacecraftPosition(
   if (!placement) return null
   const { anchor, local } = placement
   return [anchor[0] + local[0], anchor[1] + local[1], anchor[2] + local[2]]
+}
+
+/**
+ * A model-time slice of a simplified artificial orbit, expressed in the
+ * anchor body's local frame. A fraction of 1 closes one complete orbit;
+ * smaller fractions end exactly at the current model position.
+ */
+export function getSimplifiedCraftOrbitTrailPoints(
+  craft: SpacecraftData,
+  simTime: number,
+  modifiers: CraftModifiers = {},
+  segments = 128,
+  orbitFraction = 1,
+): TrailPoint[] {
+  if (
+    craft.trajectoryId ||
+    craft.anchor === 'earth-l2' ||
+    !craft.anchor ||
+    !craft.orbitalPeriod ||
+    !(segments >= 1) ||
+    !(orbitFraction > 0)
+  ) {
+    return []
+  }
+  const orbitalPeriod = craft.orbitalPeriod
+  const fraction = Math.min(1, orbitFraction)
+  const startTime = simTime - orbitalPeriod * fraction
+  return Array.from({ length: Math.floor(segments) + 1 }, (_, index) => {
+    const sampleTime =
+      startTime + (orbitalPeriod * fraction * index) / Math.floor(segments)
+    const placement = getSpacecraftPlacement(craft, sampleTime, null, modifiers)
+    if (!placement) {
+      throw new Error(`Simplified orbit placement unavailable for ${craft.id}`)
+    }
+    return placement.local
+  })
 }
 
 /**

@@ -27,9 +27,9 @@
 - **时间机器（1950–2050）**：时间可倒流，自定义日历支持日/月/年份分页选择、「今天」按钮同步真实当前日期；10 组任务故事可从任务页或航天器档案触发，回放会自动暂停、切换真实比例并聚焦历史目标，避免艺术化放大造成近飞穿模
 - **十二个深空任务真实轨迹**：旅行者 1/2 号、先驱者 10 号、新视野号，以及卡西尼、伽利略、黎明、罗塞塔、OSIRIS-REx/APEX、Lucy、Psyche、Europa Clipper 使用打包 JPL Horizons 状态矢量；巡航段按 30 天、事件窗按 1 天、关键近飞窗按 6 小时混合采样，再以位置 + 速度 Hermite 曲线平滑重建
 - **哈希星历按需加载**：首包只含轻量注册索引；每个任务使用内容哈希 JSON，选中目标、故事与深链优先加载，其余已发射任务在浏览器空闲时串行渐进加载。渲染热路径读取同步缓存，不会把单体轨迹包塞进主 JavaScript
-- **轨迹语义**：任务来源边界固定区分已飞行/已知的实线渐变与预测/传播的低透明虚线；模拟日期只移动独立的小圆时间光标，不会改写数据性质。行星、卫星、小天体和帕克的闭合线统一表示当前历元的瞬时密切轨道
+- **轨迹语义与降噪**：未选中航天器只显示截至模型时刻的最近 365.25 天渐隐航迹（简化局部轨道显示最近 20% 周期），选中后才展开完整语义轨迹；任务来源边界固定区分已飞行/已知的实线与预测/传播的低透明虚线。已终止任务仍可从档案载入完整历史航迹，但不会复活实体模型
 - **屏幕空间 LOD**：闭合轨道按投影弦高在 128–16384 顶点间分级，Horizons 航迹按 overview/medium/focus 精度自适应细分；每 12 帧评估并使用 0.92/1.08 滞回，远景更轻、近景和选中目标仍保持平滑
-- **NASA 官方 3D 模型**：在原有旅行者、先驱者、新视野、朱诺、帕克、韦伯、哈勃、国际空间站基础上，新增卡西尼、伽利略、黎明、罗塞塔、OSIRIS-REx、Europa Clipper，以及谷神星、灶神星、贝努官方 GLB；Europa Clipper 的 34.05 MiB 原始文件经 Meshopt/WebP 优化为约 2.6 MiB 以符合 Pages 限制
+- **权威 3D 形状模型**：航天器与谷神星、灶神星、贝努使用 NASA 资源；67P、阿波菲斯和阿罗科斯新增 ESA Rosetta / NASA PDS 测绘形状模型。Europa Clipper 的 34.05 MiB 原始文件经 Meshopt/WebP 优化为约 2.6 MiB。天宫目前没有找到可再分发的官方网格，继续使用程序化示意，避免引入 140 MiB 且精度未经验证的社区模型
 - **小天体与彗星**：谷神星、灶神星、贝努、67P、哈雷彗星、欧律巴忒斯、灵神星、阿波菲斯和阿罗科斯均采用 JPL SBDB 离线轨道根数，具备真实空间方位、轨道、搜索、实时光时和扩展科学档案
 - **目标搜索**：目标列表支持中英文模糊搜索，桌面端按 `/` 直达
 - **实时读数**：档案面板按当前模型时刻实时计算距太阳/距地球（AU + km）与单向光时（NASA Eyes 风格）
@@ -42,7 +42,7 @@
 - 点击目标即自动锁定跟随，镜头平滑飞近（Star Walk 式观测）
 - 默认时间倍率为 1×（约每秒推进 1 个地球日），可在 0.01×–1000× 间调节；快捷键：空格暂停、R 重置相机、/ 搜索、Esc 关闭面板
 - 真实贴图可一键切换为轻量程序化贴图，兼顾低配设备
-- 沉浸、观测、纯净三套场景预设，支持黄道网格、航天器开关与自动巡航；真实比例下物理滑杆自动锁定为 1×
+- 沉浸、观测、纯净三套场景预设，支持黄道网格、稀疏轨道倾角垂线带、航天器开关与自动巡航；真实比例下物理滑杆自动锁定为 1×
 - 桌面观测台与移动端抽屉自适应布局，全部界面支持纯中文 / 双语 / 纯英文三模式，选择会保存在浏览器
 
 ## 环境
@@ -197,7 +197,7 @@ npm run validate:data
 
 ## 素材来源
 
-- 航天器及谷神星、灶神星、贝努 3D 模型：[NASA 3D Resources](https://science.nasa.gov/3d-resources/)（具体署名与原始页面显示在各目标档案，文件存放于 `public/models/`）。Europa Clipper 为官方 GLB 的网页优化衍生文件；依 NASA 媒体使用条款署名。本项目与 NASA 无隶属关系，NASA 亦未对本项目背书
+- 航天器及谷神星、灶神星、贝努 3D 模型：[NASA 3D Resources](https://science.nasa.gov/3d-resources/)；67P：[ESA / Rosetta Shape Models v2.0](https://doi.org/10.26007/34vg-8s07)；阿波菲斯：[NASA PDS / JPL Radar Shape Model v1.0](https://sbnarchive.psi.edu/pds4/non_mission/gbo.ast-apophis.jpl.radar.shape_model_v1.0/)；阿罗科斯：[NASA PDS / Porter 2024](https://doi.org/10.26007/97r3-1e19)。具体署名与来源显示在各目标档案，网页 GLB 为原始科学网格的格式转换或优化衍生文件。本项目与 NASA / ESA 无隶属关系，相关机构亦未对本项目背书
 - 行星星历：[JPL Approximate Positions of the Major Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html)；小天体轨道与物理参数：[NASA/JPL Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html)；深空探测器轨迹：[JPL Horizons](https://ssd.jpl.nasa.gov/horizons/)
 - 太阳、水星、金星、地球（含云层）、火星、木星贴图：[Solar System Scope Textures](https://www.solarsystemscope.com/textures/)（CC BY 4.0，基于 NASA 测绘数据）
 - 土星、天王星、海王星、冥王星、土星环贴图：threex.planets（源自 Planet Pixel Emporium）

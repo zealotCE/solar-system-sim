@@ -37,6 +37,7 @@ import {
   getCraftStats,
   getSpacecraftById,
   isCraftSceneVisible,
+  isCraftTrailOnlyArchiveVisible,
 } from '@/data/spacecraft'
 import { getAdjacentTargetId, getAvailableTargetSequence } from '@/data/targets'
 import { ensureTrajectory } from '@/data/trajectoryRegistry'
@@ -453,6 +454,9 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
   const canFollowCraft = craft
     ? isCraftSceneVisible(craft, simTime) && !trajectoryUnavailable
     : true
+  const archiveTrailOnly = Boolean(
+    craft && isCraftTrailOnlyArchiveVisible(craft, simTime, true),
+  )
   const stats = craft
     ? [
         {
@@ -559,10 +563,10 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
             </p>
             <p className="mt-0.5 truncate text-[8px] text-slate-500">
               {pureChinese
-                ? '定位、航迹与跟随暂缓'
+                ? '定位、航迹与聚焦暂缓'
                 : englishOnly
-                  ? 'PLACEMENT, TRAIL & FOLLOW PAUSED'
-                  : '定位与跟随暂缓 / PLACEMENT & FOLLOW PAUSED'}
+                  ? 'PLACEMENT, TRAIL & FOCUS PAUSED'
+                  : '定位与聚焦暂缓 / PLACEMENT & FOCUS PAUSED'}
             </p>
           </div>
           {trajectoryFailed && craft?.trajectoryId ? (
@@ -888,7 +892,15 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
         ) : !canFollowCraft ? (
           <>
             <Satellite />
-            {englishOnly ? 'ARCHIVE ONLY · CRAFT NO LONGER IN FLIGHT' : '仅档案 · 航天器已不在飞行'}
+            {archiveTrailOnly
+              ? pureChinese
+                ? '档案航迹已显示 · 实体已终止'
+                : englishOnly
+                  ? 'ARCHIVE TRAIL VISIBLE · PHYSICAL CRAFT ENDED'
+                  : '档案航迹 / ARCHIVE TRAIL · 实体已终止'
+              : englishOnly
+                ? 'ARCHIVE ONLY · CRAFT NO LONGER IN FLIGHT'
+                : '仅档案 · 航天器已不在飞行'}
           </>
         ) : followPlanet ? (
           <>

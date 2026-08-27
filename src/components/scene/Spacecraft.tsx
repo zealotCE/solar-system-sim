@@ -2,6 +2,7 @@ import { Html, Line } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import type { Line2 } from 'three-stdlib'
 
 import {
   cancelQueuedTrajectory,
@@ -12,13 +13,13 @@ import {
   SPACECRAFT,
   getCraftFocusRadius,
   getCraftPhysicalSpan,
-  getCraftSunOrbitRadius,
   getDeepProbeTrailCursorStateAtJd,
   getDeepProbeTrailLodGuide,
   getDeepProbeTrailWaypoints,
+  getSimplifiedCraftOrbitTrailPoints,
   getSpacecraftPlacement,
-  isCraftLaunched,
   isCraftSceneVisible,
+  isCraftTrailOnlyArchiveVisible,
   type SpacecraftData,
   type SpacecraftKind,
 } from '@/data/spacecraft'
@@ -30,19 +31,26 @@ import { getCraftLocatorTexture } from '@/lib/planetTextures'
 import {
   HORIZONS_TRAIL_PROJECTED_ERROR_THRESHOLDS_PX,
   HORIZONS_TRAIL_QUALITY_ORDER,
+  MOON_ORBIT_MAX_SEGMENTS,
   PARKER_ORBIT_MAX_SEGMENTS,
+  getClosedOrbitSegmentTiers,
+  getClosedOrbitTransitionThresholds,
   getPolylineSagittaSamples,
+  getPolylineBoundingRadius,
 } from '@/lib/screenSpaceLod'
 import { getCraftModel } from '@/lib/spacecraftModels'
 import {
   ACTUAL_TRAJECTORY_GRADIENT_START,
   getActualTrajectoryGradientMix,
+  getArtificialOrbitVisibleFraction,
+  getOrbitLineStyle,
+  getTimedTrailForDisplay,
   getTrajectoryCursorDiameterPixels,
   getTrajectoryLineStyle,
   splitTimedTrailAtPredictionBoundary,
+  type TimedTrailPoint,
 } from '@/lib/trajectorySemantics'
 import { CraftGlbModel } from './CraftGlbModel'
-import { OrbitLine } from './OrbitLine'
 
 type MarkerSizes = { mesh: number; hit: number; labelAlways: boolean }
 
@@ -65,7 +73,198 @@ const UNSELECTED_PROXY_MAX_PIXELS = 18
 const scratchWorld = new THREE.Vector3()
 const cursorScratchWorld = new THREE.Vector3()
 
-function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
+type TrailVertexColor = [red: number, green: number, blue: number, alpha: number]
+
+const TRAIL_OLDEST_ALPHA = 0.12
+const SELECTED_TRAIL_OLDEST_ALPHA = 0.26
+
+function getTaperedTrailColors(
+  points: readonly TimedTrailPoint[],
+  color: string,
+  firstJdTdb: number,
+  lastJdTdb: number,
+  selected: boolean,
+): TrailVertexColor[] {
+  const bright = new THREE.Color(color)
+  const alphaFloor = selected
+    ? SELECTED_TRAIL_OLDEST_ALPHA
+    : TRAIL_OLDEST_ALPHA
+  return points.map(([jdTdb]) => {
+    const mix = getActualTrajectoryGradientMix(
+      jdTdb,
+      firstJdTdb,
+      lastJdTdb,
+    )
+    const colorStrength =
+      ACTUAL_TRAJECTORY_GRADIENT_START +
+      (1 - ACTUAL_TRAJECTORY_GRADIENT_START) * Math.sqrt(mix)
+    return [
+      bright.r * colorStrength,
+      bright.g * colorStrength,
+      bright.b * colorStrength,
+      alphaFloor + (1 - alphaFloor) * mix,
+    ]
+  })
+}
+
+function getFractionTrailColors(
+  pointCount: number,
+  color: string,
+  selected: boolean,
+): TrailVertexColor[] {
+  const denominator = Math.max(1, pointCount - 1)
+  return getTaperedTrailColors(
+    Array.from(
+      { length: pointCount },
+      (_, index) => [index / denominator, 0, 0, 0] as TimedTrailPoint,
+    ),
+    color,
+    0,
+    1,
+    selected,
+  )
+}
+
+function ArtificialOrbitTrail({ craft }: { craft: SpacecraftData }) {
+  const groupRef = useRef<THREE.Group>(null)
+  const lineRef = useRef<Line2>(null)
+  const {
+    selectedPlanetId,
+    simTimeRef,
+    orbitEpoch,
+    orbitScale,
+    eccentricityScale,
+    inclinationScale,
+    planetScale,
+    trueScale,
+  } = useSimulation()
+  const selected = selectedPlanetId === craft.id
+  const modifiers = useMemo(
+    () => ({
+      orbitScale,
+      eccentricityScale,
+      inclinationScale,
+      planetScale,
+      trueScale,
+    }),
+    [
+      orbitScale,
+      eccentricityScale,
+      inclinationScale,
+      planetScale,
+      trueScale,
+    ],
+  )
+  const maxSegments =
+    craft.anchor === 'sun'
+      ? PARKER_ORBIT_MAX_SEGMENTS
+      : MOON_ORBIT_MAX_SEGMENTS
+  const segmentTiers = useMemo(
+    () => getClosedOrbitSegmentTiers(maxSegments),
+    [maxSegments],
+  )
+  const transitionThresholds = useMemo(
+    () => getClosedOrbitTransitionThresholds(segmentTiers),
+    [segmentTiers],
+  )
+  const lodGuide = useMemo(
+    () =>
+      getSimplifiedCraftOrbitTrailPoints(
+        craft,
+        0,
+        modifiers,
+        64,
+        1,
+      ),
+    [craft, modifiers],
+  )
+  const lodWorldError = useMemo(
+    () => getPolylineBoundingRadius(lodGuide),
+    [lodGuide],
+  )
+  const tierIndex = useScreenSpaceLod({
+    points: lodGuide,
+    thresholds: transitionThresholds,
+    worldError: lodWorldError,
+    objectRef: groupRef,
+    initialIndex: selected ? segmentTiers.length - 1 : 0,
+    maxIndex: segmentTiers.length - 1,
+    forceMax: selected,
+  })
+  const visibleFraction = getArtificialOrbitVisibleFraction(selected)
+  const fullOrbitSegments = segmentTiers[tierIndex]
+  const renderedSegments = selected
+    ? fullOrbitSegments
+    : Math.max(12, Math.ceil(fullOrbitSegments * visibleFraction))
+  const points = useMemo(
+    () =>
+      getSimplifiedCraftOrbitTrailPoints(
+        craft,
+        orbitEpoch,
+        modifiers,
+        renderedSegments,
+        visibleFraction,
+      ),
+    [craft, modifiers, orbitEpoch, renderedSegments, visibleFraction],
+  )
+  const vertexColors = useMemo(
+    () => getFractionTrailColors(points.length, craft.color, selected),
+    [craft.color, points.length, selected],
+  )
+  const initialAnchor =
+    getSpacecraftPlacement(craft, orbitEpoch, null, modifiers)?.anchor ??
+    ([0, 0, 0] as const)
+  const lineStyle = getOrbitLineStyle('artificial', selected)
+
+  useFrame(() => {
+    const placement = getSpacecraftPlacement(
+      craft,
+      simTimeRef.current,
+      null,
+      modifiers,
+    )
+    if (!placement) return
+    groupRef.current?.position.set(...placement.anchor)
+    if (selected || !lineRef.current) return
+    const livePoints = getSimplifiedCraftOrbitTrailPoints(
+      craft,
+      simTimeRef.current,
+      modifiers,
+      renderedSegments,
+      visibleFraction,
+    )
+    lineRef.current.geometry.setPositions(livePoints.flat())
+  })
+
+  if (points.length < 2) return null
+  return (
+    <group
+      ref={groupRef}
+      name="orbit-artificial"
+      position={initialAnchor}
+    >
+      <Line
+        ref={lineRef}
+        points={points}
+        vertexColors={vertexColors}
+        transparent
+        depthWrite={false}
+        opacity={lineStyle.opacity}
+        lineWidth={lineStyle.lineWidth}
+        dashed={false}
+        toneMapped={false}
+      />
+    </group>
+  )
+}
+
+function SpacecraftMarker({
+  craft,
+  trailOnly = false,
+}: {
+  craft: SpacecraftData
+  trailOnly?: boolean
+}) {
   const anchorRef = useRef<THREE.Group>(null)
   const localRef = useRef<THREE.Group>(null)
   const meshRef = useRef<THREE.Mesh>(null)
@@ -79,6 +278,7 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
   const { size } = useThree()
   const {
     simTimeRef,
+    simTime,
     selectPlanet,
     selectedPlanetId,
     showLabels,
@@ -141,17 +341,65 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
   const trailQuality = HORIZONS_TRAIL_QUALITY_ORDER[trailTierIndex]
 
   // Reconstructed flight path straight from the offline Horizons samples.
-  const trail = useMemo(() => {
-    const waypoints = getDeepProbeTrailWaypoints(
+  const fullTrail = useMemo(
+    () =>
+      getDeepProbeTrailWaypoints(
+        craft,
+        trajectory,
+        {
+          orbitScale,
+          inclinationScale,
+          trueScale,
+        },
+        trailQuality,
+      ),
+    [
       craft,
       trajectory,
-      {
-        orbitScale,
-        inclinationScale,
-        trueScale,
-      },
+      orbitScale,
+      inclinationScale,
+      trueScale,
       trailQuality,
-    )
+    ],
+  )
+  const recentTrail = useMemo(
+    () => {
+      const currentJdTdb = simTimeToJd(simTime)
+      const clipped = getTimedTrailForDisplay(
+        fullTrail,
+        currentJdTdb,
+        false,
+      )
+      if (!clipped.length) return clipped
+      const endpoint = getDeepProbeTrailCursorStateAtJd(
+        trajectory,
+        currentJdTdb,
+        { orbitScale, inclinationScale, trueScale },
+      )
+      if (!endpoint.point || endpoint.clampedJdTdb === null) return clipped
+      const [x, y, z] = endpoint.point
+      const exactEndpoint: TimedTrailPoint = [
+        endpoint.clampedJdTdb,
+        x,
+        y,
+        z,
+      ]
+      return [...clipped.slice(0, -1), exactEndpoint]
+    },
+    [
+      fullTrail,
+      inclinationScale,
+      orbitScale,
+      simTime,
+      trajectory,
+      trueScale,
+    ],
+  )
+  const displayedTrail = selected ? fullTrail : recentTrail
+
+  // Reconstructed flight path straight from the offline Horizons samples.
+  const trail = useMemo(() => {
+    const waypoints = displayedTrail
     if (!waypoints.length) return null
     const placement = getSpacecraftPlacement(craft, orbitEpoch, trajectory, {
       orbitScale,
@@ -178,48 +426,41 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
       )
     const actualPoints = toLocalPoints(segments.actual)
     const predictedPoints = toLocalPoints(segments.predicted)
-    const bright = new THREE.Color(craft.color)
-    const dim = bright.clone().multiplyScalar(
-      ACTUAL_TRAJECTORY_GRADIENT_START,
+    const firstJdTdb = waypoints[0][0]
+    const lastJdTdb = waypoints.at(-1)![0]
+    const actualColors = getTaperedTrailColors(
+      segments.actual,
+      craft.color,
+      firstJdTdb,
+      lastJdTdb,
+      selected,
     )
-    const actualFirstJdTdb = segments.actual[0]?.[0] ?? 0
-    const actualLastJdTdb = segments.actual.at(-1)?.[0] ?? actualFirstJdTdb
-    const actualColors = segments.actual.map(([jdTdb]) =>
-      dim
-        .clone()
-        .lerp(
-          bright,
-          getActualTrajectoryGradientMix(
-            jdTdb,
-            actualFirstJdTdb,
-            actualLastJdTdb,
-          ),
-        ),
+    const predictedColors = getTaperedTrailColors(
+      segments.predicted,
+      craft.color,
+      firstJdTdb,
+      lastJdTdb,
+      selected,
     )
     return {
       anchor,
       actual: { points: actualPoints, colors: actualColors },
-      predicted: { points: predictedPoints },
+      predicted: { points: predictedPoints, colors: predictedColors },
     }
   }, [
     craft,
+    displayedTrail,
     orbitEpoch,
     orbitScale,
     eccentricityScale,
     inclinationScale,
     planetScale,
+    selected,
     trueScale,
     trajectory,
-    trailQuality,
   ])
 
   useFrame(({ camera }, delta) => {
-    const anchorGroup = anchorRef.current
-    const localGroup = localRef.current
-    if (!anchorGroup || !localGroup) return
-    // Nested groups: the anchor carries the large heliocentric offset and the
-    // local orbit stays numerically small, avoiding float32 jitter for craft
-    // hugging a planet at true scale.
     const placement = getSpacecraftPlacement(craft, simTimeRef.current, trajectory, {
       orbitScale,
       eccentricityScale,
@@ -229,19 +470,6 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
     })
     if (!placement) return
     const { anchor, local } = placement
-    anchorGroup.position.set(anchor[0], anchor[1], anchor[2])
-    localGroup.position.set(local[0], local[1], local[2])
-
-    if (meshRef.current) {
-      meshRef.current.rotation.x += delta * 0.5
-      meshRef.current.rotation.y += delta * 0.85
-    }
-    if (glbSpinRef.current) {
-      glbSpinRef.current.rotation.y += delta * 0.12
-    }
-
-    scratchWorld.set(anchor[0] + local[0], anchor[1] + local[1], anchor[2] + local[2])
-    const distance = camera.position.distanceTo(scratchWorld)
 
     const trailCursor = trailCursorRef.current
     if (trailCursor) {
@@ -279,6 +507,26 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
       }
     }
 
+    const anchorGroup = anchorRef.current
+    const localGroup = localRef.current
+    if (trailOnly || !anchorGroup || !localGroup) return
+    // Nested groups: the anchor carries the large heliocentric offset and the
+    // local orbit stays numerically small, avoiding float32 jitter for craft
+    // hugging a planet at true scale.
+    anchorGroup.position.set(anchor[0], anchor[1], anchor[2])
+    localGroup.position.set(local[0], local[1], local[2])
+
+    if (meshRef.current) {
+      meshRef.current.rotation.x += delta * 0.5
+      meshRef.current.rotation.y += delta * 0.85
+    }
+    if (glbSpinRef.current) {
+      glbSpinRef.current.rotation.y += delta * 0.12
+    }
+
+    scratchWorld.set(anchor[0] + local[0], anchor[1] + local[1], anchor[2] + local[2])
+    const distance = camera.position.distanceTo(scratchWorld)
+
     // A perspective-aware invisible target makes tiny true-scale craft easy
     // to pick at overview distance without enlarging their rendered markers.
     if (camera instanceof THREE.PerspectiveCamera) {
@@ -291,6 +539,19 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
       if (locatorRef.current) {
         const locatorSize = worldPerPixel * LOCATOR_PIXELS
         locatorRef.current.scale.set(locatorSize, locatorSize, 1)
+      }
+      if (meshRef.current) {
+        // Stylized world-sized craft markers become enormous when the camera
+        // focuses a kilometre-scale minor body nearby. Keep unselected meshes
+        // below a restrained screen-space cap; the locator remains the
+        // discoverability layer. Selected and true-scale entities keep their
+        // intended model/physical scale.
+        const maxMarkerRadius = worldPerPixel * 8
+        const markerScale =
+          !trueScale && !selected
+            ? Math.min(1, maxMarkerRadius / baseSizes.mesh)
+            : 1
+        meshRef.current.scale.setScalar(markerScale)
       }
       if (visualProxyRef.current) {
         // The identification model has a world-space reference span, so it
@@ -379,12 +640,13 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
               opacity={actualTrailStyle.opacity}
               lineWidth={actualTrailStyle.lineWidth}
               dashed={actualTrailStyle.dashed}
+              toneMapped={false}
             />
           ) : null}
           {trail.predicted.points.length >= 2 ? (
             <Line
               points={trail.predicted.points}
-              color={craft.color}
+              vertexColors={trail.predicted.colors}
               transparent
               depthWrite={false}
               opacity={predictedTrailStyle.opacity}
@@ -393,6 +655,7 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
               dashScale={predictedTrailStyle.dashScale}
               dashSize={predictedTrailStyle.dashSize}
               gapSize={predictedTrailStyle.gapSize}
+              toneMapped={false}
             />
           ) : null}
           {selected ? (
@@ -425,8 +688,9 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
           ) : null}
         </group>
       ) : null}
-      <group ref={anchorRef}>
-        <group ref={localRef}>
+      {!trailOnly ? (
+        <group ref={anchorRef}>
+          <group ref={localRef}>
           <mesh
             ref={hitRef}
             onClick={(event) => {
@@ -536,24 +800,30 @@ function SpacecraftMarker({ craft }: { craft: SpacecraftData }) {
               </div>
             </Html>
           ) : null}
+          </group>
         </group>
-      </group>
+      ) : null}
     </>
   )
 }
 
 export function SpacecraftFleet() {
-  const {
-    showOrbits,
-    orbitScale,
-    inclinationScale,
-    trueScale,
-    simTime,
-    selectedPlanetId,
-  } = useSimulation()
-  const parker = SPACECRAFT.find((craft) => craft.id === 'parker')
+  const { showOrbits, simTime, selectedPlanetId } = useSimulation()
   const visibleCraft = SPACECRAFT.filter((craft) => isCraftSceneVisible(craft, simTime))
-  const parkerLaunched = parker ? isCraftLaunched(parker, simTime) : false
+  const selectedArchiveCraft = SPACECRAFT.find(
+    (craft) =>
+      craft.id === selectedPlanetId &&
+      isCraftTrailOnlyArchiveVisible(craft, simTime, true),
+  )
+  const mountedCraft = selectedArchiveCraft
+    ? [...visibleCraft, selectedArchiveCraft]
+    : visibleCraft
+  const simplifiedOrbitCraft = visibleCraft.filter(
+    (craft) =>
+      !craft.trajectoryId &&
+      craft.anchor !== 'earth-l2' &&
+      Boolean(craft.orbitalPeriod),
+  )
   const idleTrajectoryIds = visibleCraft
     .filter((craft) => craft.trajectoryId && craft.id !== selectedPlanetId)
     .map((craft) => craft.trajectoryId!)
@@ -570,19 +840,17 @@ export function SpacecraftFleet() {
 
   return (
     <group>
-      {showOrbits && parkerLaunched && parker?.orbitRadius ? (
-        <OrbitLine
-          orbitRadius={getCraftSunOrbitRadius(parker, trueScale) * orbitScale}
-          eccentricity={parker.eccentricity ?? 0}
-          inclination={(parker.inclination ?? 0) * (trueScale ? 1 : inclinationScale)}
-          color={parker.color}
-          active={selectedPlanetId === parker.id}
-          lodMaxSegments={PARKER_ORBIT_MAX_SEGMENTS}
-          semantic="osculating"
+      {showOrbits
+        ? simplifiedOrbitCraft.map((craft) => (
+            <ArtificialOrbitTrail key={`${craft.id}-orbit`} craft={craft} />
+          ))
+        : null}
+      {mountedCraft.map((craft) => (
+        <SpacecraftMarker
+          key={craft.id}
+          craft={craft}
+          trailOnly={!isCraftSceneVisible(craft, simTime)}
         />
-      ) : null}
-      {visibleCraft.map((craft) => (
-        <SpacecraftMarker key={craft.id} craft={craft} />
       ))}
     </group>
   )

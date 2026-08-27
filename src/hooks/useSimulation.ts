@@ -14,6 +14,7 @@ import {
   getSpacecraftById,
   isCraftLaunched,
   isCraftSceneVisible,
+  isCraftTrailOnlyArchiveVisible,
 } from '../data/spacecraft'
 import { ensureTrajectory } from '../data/trajectoryRegistry'
 import { SIM_TIME_MAX_YEARS, SIM_TIME_MIN_YEARS, utcMsToSimTime } from '../lib/utils'
@@ -207,22 +208,36 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       // Completed impact/destruction missions remain available as archives but
       // cannot be followed as if intact hardware still existed in the scene.
       const canFollow = !craft || isCraftSceneVisible(craft, simTimeRef.current)
+      const canFocusArchiveTrail = Boolean(
+        craft &&
+          isCraftTrailOnlyArchiveVisible(craft, simTimeRef.current, true),
+      )
       setFollowPlanet(canFollow)
-      if (canFollow) setFocusNonce((value) => value + 1)
+      if (canFollow || canFocusArchiveTrail) {
+        setFocusNonce((value) => value + 1)
+      }
     } else {
       setFollowPlanet(false)
     }
   }, [])
 
-  // Rewinding past a launch removes that craft from the scene and releases a
-  // camera lock that would otherwise keep following a non-existent target.
+  // Crossing either physical lifetime boundary releases a body lock. Ended
+  // Horizons missions keep their selection and receive a one-shot trail frame.
   useEffect(() => {
     const craft = getSpacecraftById(selectedPlanetId)
-    if (!craft || isCraftLaunched(craft, simTime)) return
-    // oxlint-disable-next-line react/set-state-in-effect -- model-time validity synchronization
-    setSelectedPlanetId(null)
-    setFollowPlanet(false)
-  }, [selectedPlanetId, simTime])
+    if (!craft) return
+    if (!isCraftLaunched(craft, simTime)) {
+      // oxlint-disable-next-line react/set-state-in-effect -- model-time validity synchronization
+      setSelectedPlanetId(null)
+      setFollowPlanet(false)
+      return
+    }
+    if (followPlanet && !isCraftSceneVisible(craft, simTime)) {
+      // oxlint-disable-next-line react/set-state-in-effect -- model-time validity synchronization
+      setFollowPlanet(false)
+      if (craft.trajectoryId) setFocusNonce((value) => value + 1)
+    }
+  }, [followPlanet, selectedPlanetId, simTime])
 
   const markCustom = useCallback(() => setScenePreset('custom'), [])
 
@@ -230,13 +245,24 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     (value: boolean) => {
       setTrueScaleState(value)
       const selectedCraft = getSpacecraftById(selectedPlanetId)
-      const canFocus =
+      const physicalCraftVisible =
         !selectedCraft || isCraftSceneVisible(selectedCraft, simTimeRef.current)
-      if (selectedPlanetId && canFocus) {
+      const canFocusArchiveTrail = Boolean(
+        selectedCraft &&
+          isCraftTrailOnlyArchiveVisible(
+            selectedCraft,
+            simTimeRef.current,
+            true,
+          ),
+      )
+      if (
+        selectedPlanetId &&
+        (physicalCraftVisible || canFocusArchiveTrail)
+      ) {
         // Distances change drastically between layouts. Keep the selection and
         // re-run its focus flight in the new coordinate system instead of
         // dropping the user back at the system overview.
-        setFollowPlanet(true)
+        setFollowPlanet(physicalCraftVisible)
         setFocusNonce((nonce) => nonce + 1)
       } else {
         if (selectedCraft) setFollowPlanet(false)

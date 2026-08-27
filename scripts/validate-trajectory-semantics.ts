@@ -7,25 +7,94 @@ import {
   SPACECRAFT,
   getDeepProbeTrailCursorStateAtJd,
   getDeepProbeTrailWaypoints,
+  getSimplifiedCraftOrbitTrailPoints,
+  getSpacecraftPlacement,
+  isCraftSceneVisible,
+  isCraftTrailOnlyArchiveVisible,
 } from '../src/data/spacecraft.ts'
 import type { TrajectoryAsset } from '../src/data/trajectoryTypes.ts'
 import {
+  ARTIFICIAL_ORBIT_RECENT_FRACTION,
+  HORIZONS_RECENT_TRAIL_DAYS,
   TRAJECTORY_CURSOR_MAX_PIXELS,
   TRAJECTORY_CURSOR_MIN_PIXELS,
   getActualTrajectoryGradientMix,
+  getArtificialOrbitVisibleFraction,
+  getArtificialTrailDisplayMode,
   getOrbitLineStyle,
+  getTimedTrailDisplayWindow,
+  getTimedTrailForDisplay,
   getTrajectoryCursorDiameterPixels,
   getTrajectoryDataStatus,
   getTrajectoryLineStyle,
+  sliceTimedTrailToWindow,
   splitTimedTrailAtPredictionBoundary,
   type TimedTrailPoint,
 } from '../src/lib/trajectorySemantics.ts'
+import { utcMsToSimTime } from '../src/lib/utils.ts'
 
 const syntheticTrail: TimedTrailPoint[] = [
   [0, 0, 0, 0],
   [10, 10, 20, -10],
   [20, 20, 30, -20],
 ]
+const clippedTrail = sliceTimedTrailToWindow(syntheticTrail, 5, 15)
+assert.deepEqual(clippedTrail, [
+  [5, 5, 10, -5],
+  [10, 10, 20, -10],
+  [15, 15, 25, -15],
+])
+const currentJdTdb = 12.5
+const throughCurrent = sliceTimedTrailToWindow(
+  syntheticTrail,
+  5,
+  currentJdTdb,
+)
+const currentPoint = sliceTimedTrailToWindow(
+  syntheticTrail,
+  currentJdTdb,
+  currentJdTdb,
+)
+assert.deepEqual(
+  throughCurrent.at(-1),
+  currentPoint[0],
+  'recent trail must terminate continuously on the complete rendered path',
+)
+assert.equal(throughCurrent.at(-1)![0], currentJdTdb)
+assert.equal(getArtificialTrailDisplayMode(false), 'recent')
+assert.equal(getArtificialTrailDisplayMode(true), 'full')
+assert.equal(
+  getArtificialOrbitVisibleFraction(false),
+  ARTIFICIAL_ORBIT_RECENT_FRACTION,
+)
+assert.equal(getArtificialOrbitVisibleFraction(true), 1)
+assert.deepEqual(
+  getTimedTrailForDisplay(syntheticTrail, currentJdTdb, true),
+  syntheticTrail,
+  'selection must reveal complete loaded path coverage',
+)
+assert.deepEqual(
+  getTimedTrailForDisplay(syntheticTrail, Number.NaN, true),
+  syntheticTrail,
+  'selected full-path policy must not depend on a cursor date',
+)
+
+const longSyntheticTrail: TimedTrailPoint[] = [
+  [0, 0, 0, 0],
+  [500, 1, 0, 0],
+  [1000, 2, 0, 0],
+]
+const recentWindow = getTimedTrailDisplayWindow(
+  longSyntheticTrail,
+  800,
+  false,
+)
+assert.deepEqual(recentWindow, {
+  mode: 'recent',
+  startJdTdb: 800 - HORIZONS_RECENT_TRAIL_DAYS,
+  endJdTdb: 800,
+})
+
 const syntheticSplit = splitTimedTrailAtPredictionBoundary(syntheticTrail, 5)
 
 assert.deepEqual(syntheticSplit.boundary, [5, 5, 10, -5])
@@ -183,6 +252,7 @@ for (const active of [false, true]) {
   assert.equal(predictedStyle.dashed, true)
   assert(predictedStyle.opacity < actualStyle.opacity)
   assert(predictedStyle.lineWidth < actualStyle.lineWidth)
+  assert(actualStyle.lineWidth <= 1.1)
 
   const referenceStyle = getOrbitLineStyle('reference', active)
   const osculatingStyle = getOrbitLineStyle('osculating', active)
@@ -190,6 +260,59 @@ for (const active of [false, true]) {
   assert(osculatingStyle.opacity < referenceStyle.opacity)
   assert(osculatingStyle.lineWidth < referenceStyle.lineWidth)
 }
+
+const artificialNormalStyle = getOrbitLineStyle('artificial', false)
+const artificialActiveStyle = getOrbitLineStyle('artificial', true)
+assert.equal(artificialNormalStyle.dashed, false)
+assert.equal(artificialActiveStyle.dashed, false)
+assert(artificialNormalStyle.lineWidth < artificialActiveStyle.lineWidth)
+assert(artificialActiveStyle.lineWidth <= 1)
+
+const cassini = SPACECRAFT.find((candidate) => candidate.id === 'cassini')
+assert(cassini)
+const postCassiniTime = utcMsToSimTime(Date.parse('2026-01-01T00:00:00Z'))
+assert.equal(isCraftSceneVisible(cassini, postCassiniTime), false)
+assert.equal(
+  isCraftTrailOnlyArchiveVisible(cassini, postCassiniTime, false),
+  false,
+)
+assert.equal(
+  isCraftTrailOnlyArchiveVisible(cassini, postCassiniTime, true),
+  true,
+  'an ended selected Horizons mission must mount as trail-only',
+)
+
+const parker = SPACECRAFT.find((candidate) => candidate.id === 'parker')
+assert(parker)
+const parkerFullOrbit = getSimplifiedCraftOrbitTrailPoints(
+  parker,
+  0,
+  {},
+  128,
+  getArtificialOrbitVisibleFraction(true),
+)
+const parkerRecentArc = getSimplifiedCraftOrbitTrailPoints(
+  parker,
+  0,
+  {},
+  32,
+  getArtificialOrbitVisibleFraction(false),
+)
+const parkerPlacement = getSpacecraftPlacement(parker, 0, null)
+assert(parkerPlacement)
+assert(
+  Math.hypot(
+    ...parkerFullOrbit[0].map(
+      (value, axis) => value - parkerFullOrbit.at(-1)![axis],
+    ),
+  ) < 1e-10,
+  'selected simplified orbit must close',
+)
+assert.deepEqual(
+  parkerRecentArc.at(-1),
+  parkerPlacement.local,
+  'unselected simplified arc must end at model time',
+)
 
 assert.equal(getActualTrajectoryGradientMix(0, 0, 10), 0)
 assert.equal(getActualTrajectoryGradientMix(10, 0, 10), 1)
@@ -199,5 +322,5 @@ assert(
 )
 
 console.log(
-  `Trajectory semantics validation passed: ${missionId} retained ${adaptiveTrail.length} timed vertices; split continuity, fixed provenance status, cursor coverage/clamping, bounded marker size and semantic styles verified.`,
+  `Trajectory semantics validation passed: ${missionId} retained ${adaptiveTrail.length} timed vertices; ${HORIZONS_RECENT_TRAIL_DAYS}-day/${ARTIFICIAL_ORBIT_RECENT_FRACTION * 100}% recent windows, current-JD continuity, selected full paths, ended trail-only archives, fixed provenance status, cursor coverage/clamping and restrained semantic styles verified.`,
 )

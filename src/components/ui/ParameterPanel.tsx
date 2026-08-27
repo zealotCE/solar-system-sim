@@ -255,8 +255,8 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
         </div>
         <p className="trajectory-legend-note">
           {semanticText(
-            '线型由任务数据来源边界固定；模拟日期只移动时刻标记。',
-            'Line status is fixed by mission provenance; model time only moves the marker.',
+            '线型由任务来源边界固定；未选中航天器仅显示最近航段，选中后显示完整航迹或闭合轨道。',
+            'Line status follows mission provenance; unselected craft show only a recent tail, while selection reveals the full trail or closed orbit.',
           )}
         </p>
       </section>
@@ -418,7 +418,10 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
         <ToggleRow
           icon={Waypoints}
           label={text('黄道参考网格', 'ECLIPTIC REFERENCE GRID')}
-          description={text('显示轨道方位与距离参考线', 'Show orbital bearing and distance guides.')}
+          description={semanticText(
+            '显示轨道方位、距离与倾角投影垂线',
+            'Show orbital bearing, distance, and inclination drop guides.',
+          )}
           enabled={showEcliptic}
           onChange={setShowEcliptic}
         />
