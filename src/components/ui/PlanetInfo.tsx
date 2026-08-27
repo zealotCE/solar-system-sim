@@ -443,8 +443,8 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
         : '深空位置由按任务载入的 JPL Horizons 状态矢量插值得到（30 天、1 天与 6 小时混合采样 + Hermite 插值）；覆盖范围外钳制在端点。'
       : craft.anchor === 'earth' || craft.anchor === 'earth-l2'
         ? englishOnly
-          ? 'This near-Earth or Sun–Earth representation uses simplified orbital parameters and is not live operational tracking.'
-          : '近地/日心航天器采用真实轨道参数的简化开普勒轨道，示意相对位置，并非实时测轨。'
+          ? 'This near-Earth or Sun–Earth representation uses simplified orbital parameters and is not live tracking. Overview collapses these missions to stable labels; unresolved fast LEO motion holds a representative phase until playback is paused or slowed to 0.01×.'
+          : '近地/日心航天器采用简化轨道参数示意，并非实时测轨。远景只显示稳定任务标签；高速播放无法分辨近地周期时会固定代表性相位，暂停或降至 0.01× 后恢复可辨运动。'
         : null
     : null
   const craftModel = craft ? getCraftModel(craft.id) : null

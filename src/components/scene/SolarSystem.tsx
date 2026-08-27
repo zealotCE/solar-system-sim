@@ -34,6 +34,7 @@ import {
 import { useScreenSpaceLod } from '@/hooks/useScreenSpaceLod'
 import { useSimulation } from '@/hooks/useSimulation'
 import { useTrajectory } from '@/hooks/useTrajectory'
+import { getLocalOrbitDisplayTime } from '@/lib/earthCraftLod'
 import {
   getClosedOrbitSegmentTiers,
   getClosedOrbitTransitionThresholds,
@@ -98,6 +99,9 @@ function CameraRig() {
     selectedPlanetId,
     simTime,
     simTimeRef,
+    isPlaying,
+    speed,
+    orbitEpoch,
     cameraResetNonce,
     focusNonce,
     orbitScale,
@@ -188,6 +192,16 @@ function CameraRig() {
       } else {
         const craft = selectedCraft
         if (craft) {
+          const localDisplayTime =
+            craft.anchor === 'earth'
+              ? getLocalOrbitDisplayTime({
+                  simTime: simTimeRef.current,
+                  orbitEpoch,
+                  speed,
+                  orbitalPeriod: craft.orbitalPeriod,
+                  isPlaying,
+                })
+              : simTimeRef.current
           const position = getSpacecraftPosition(
             craft,
             simTimeRef.current,
@@ -199,6 +213,7 @@ function CameraRig() {
               planetScale,
               trueScale,
             },
+            localDisplayTime,
           )
           if (!position) {
             pendingTrajectoryTarget.current = craft.id

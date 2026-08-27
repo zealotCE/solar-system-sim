@@ -1043,6 +1043,16 @@ export function getCraftPhysicalSpan(craft: SpacecraftData): number {
   return kmToSceneUnits(craft.maxSpanM / 1000)
 }
 
+/** Projected-radius reference used to reveal detailed near-Earth craft. */
+export function getEarthCraftDetailReferenceRadius(
+  trueScale: boolean,
+  planetScale = 1,
+): number {
+  return trueScale
+    ? kmToSceneUnits(7000)
+    : 0.8 * Math.max(1, planetScale * 0.92)
+}
+
 /**
  * Screen-locator framing radius for camera fly-ins. This is deliberately not
  * the body radius; strict true-scale meshes use getCraftPhysicalSpan(), while
@@ -1060,6 +1070,73 @@ export type CraftPlacement = {
   local: [number, number, number]
 }
 
+/** Anchor-only lookup for overview labels; it deliberately skips local motion. */
+export function getSpacecraftAnchorPosition(
+  craft: SpacecraftData,
+  simTime: number,
+  modifiers: CraftModifiers = {},
+): TrailPoint {
+  const orbitScale = modifiers.orbitScale ?? 1
+  const eccentricityScale = modifiers.eccentricityScale ?? 1
+  const inclinationScale = modifiers.inclinationScale ?? 1
+  const trueScale = modifiers.trueScale ?? false
+  const planetModifiers = {
+    orbitScale,
+    eccentricityScale,
+    inclinationScale,
+    trueScale,
+  }
+  if (craft.anchor === 'earth' || craft.anchor === 'earth-l2') {
+    return getPlanetPosition(EARTH, simTime, planetModifiers)
+  }
+  if (craft.anchor === 'jupiter') {
+    return getPlanetPosition(JUPITER, simTime, planetModifiers)
+  }
+  return [0, 0, 0]
+}
+
+/**
+ * Simplified-orbit local position without evaluating the moving planet anchor.
+ * Trail generation calls this for every vertex, avoiding dozens of redundant
+ * planetary ephemeris solves per craft and frame.
+ */
+export function getSimplifiedCraftLocalPosition(
+  craft: SpacecraftData,
+  simTime: number,
+  modifiers: CraftModifiers = {},
+): TrailPoint | null {
+  if (
+    craft.trajectoryId ||
+    craft.anchor === 'earth-l2' ||
+    !craft.anchor ||
+    !craft.orbitalPeriod
+  ) {
+    return null
+  }
+  const trueScale = modifiers.trueScale ?? false
+  const localScale = Math.max(1, (modifiers.planetScale ?? 1) * 0.92)
+  const radius =
+    craft.anchor === 'sun'
+      ? getCraftSunOrbitRadius(craft, trueScale) *
+        (modifiers.orbitScale ?? 1)
+      : trueScale
+        ? kmToSceneUnits(craft.trueOrbitKm ?? 7000)
+        : (craft.orbitRadius ?? 1) * localScale
+  const inclination =
+    craft.anchor === 'sun'
+      ? (craft.inclination ?? 0) *
+        (trueScale ? 1 : (modifiers.inclinationScale ?? 1))
+      : (craft.inclination ?? 0)
+  return getKeplerPosition(
+    radius,
+    craft.orbitalPeriod,
+    simTime,
+    craft.eccentricity ?? 0,
+    inclination,
+    craft.phase ?? 0,
+  )
+}
+
 /**
  * Split spacecraft placement: anchor-body position plus local offset. The
  * scene renders these as nested groups so near-planet craft keep float32
@@ -1070,10 +1147,8 @@ export function getSpacecraftPlacement(
   simTime: number,
   trajectory: Trajectory | null,
   modifiers: CraftModifiers = {},
+  localSimTime = simTime,
 ): CraftPlacement | null {
-  const orbitScale = modifiers.orbitScale ?? 1
-  const eccentricityScale = modifiers.eccentricityScale ?? 1
-  const inclinationScale = modifiers.inclinationScale ?? 1
   const planetScale = modifiers.planetScale ?? 1
   const trueScale = modifiers.trueScale ?? false
   const localScale = Math.max(1, planetScale * 0.92)
@@ -1087,44 +1162,39 @@ export function getSpacecraftPlacement(
   }
 
   if (craft.anchor === 'sun') {
+    const local = getSimplifiedCraftLocalPosition(
+      craft,
+      localSimTime,
+      modifiers,
+    )
+    if (!local) return null
     return {
       anchor: [0, 0, 0],
-      local: getKeplerPosition(
-        getCraftSunOrbitRadius(craft, trueScale) * orbitScale,
-        craft.orbitalPeriod ?? 0.25,
-        simTime,
-        craft.eccentricity ?? 0,
-        (craft.inclination ?? 0) * (trueScale ? 1 : inclinationScale),
-        craft.phase ?? 0,
-      ),
+      local,
     }
   }
 
-  const planetModifiers = { orbitScale, eccentricityScale, inclinationScale, trueScale }
-
   if (craft.anchor === 'earth-l2') {
-    const [ex, ey, ez] = getPlanetPosition(EARTH, simTime, planetModifiers)
+    const [ex, ey, ez] = getSpacecraftAnchorPosition(
+      craft,
+      simTime,
+      modifiers,
+    )
     const length = Math.hypot(ex, ez) || 1
     const offset = trueScale ? 0.01 * AU_UNITS : 1.05 * localScale
     const lift = trueScale ? 0.0002 : 0.14
     return { anchor: [ex, ey, ez], local: [(ex / length) * offset, lift, (ez / length) * offset] }
   }
 
-  const anchorPlanet = craft.anchor === 'jupiter' ? JUPITER : EARTH
-  const anchorPosition = getPlanetPosition(anchorPlanet, simTime, planetModifiers)
-  const localRadius = trueScale
-    ? kmToSceneUnits(craft.trueOrbitKm ?? 7000)
-    : (craft.orbitRadius ?? 1) * localScale
+  const local = getSimplifiedCraftLocalPosition(
+    craft,
+    localSimTime,
+    modifiers,
+  )
+  if (!local) return null
   return {
-    anchor: anchorPosition,
-    local: getKeplerPosition(
-      localRadius,
-      craft.orbitalPeriod ?? 0.01,
-      simTime,
-      craft.eccentricity ?? 0,
-      craft.inclination ?? 0,
-      craft.phase ?? 0,
-    ),
+    anchor: getSpacecraftAnchorPosition(craft, simTime, modifiers),
+    local,
   }
 }
 
@@ -1134,8 +1204,15 @@ export function getSpacecraftPosition(
   simTime: number,
   trajectory: Trajectory | null,
   modifiers: CraftModifiers = {},
+  localSimTime = simTime,
 ): [number, number, number] | null {
-  const placement = getSpacecraftPlacement(craft, simTime, trajectory, modifiers)
+  const placement = getSpacecraftPlacement(
+    craft,
+    simTime,
+    trajectory,
+    modifiers,
+    localSimTime,
+  )
   if (!placement) return null
   const { anchor, local } = placement
   return [anchor[0] + local[0], anchor[1] + local[1], anchor[2] + local[2]]
@@ -1169,11 +1246,15 @@ export function getSimplifiedCraftOrbitTrailPoints(
   return Array.from({ length: Math.floor(segments) + 1 }, (_, index) => {
     const sampleTime =
       startTime + (orbitalPeriod * fraction * index) / Math.floor(segments)
-    const placement = getSpacecraftPlacement(craft, sampleTime, null, modifiers)
-    if (!placement) {
+    const local = getSimplifiedCraftLocalPosition(
+      craft,
+      sampleTime,
+      modifiers,
+    )
+    if (!local) {
       throw new Error(`Simplified orbit placement unavailable for ${craft.id}`)
     }
-    return placement.local
+    return local
   })
 }
 

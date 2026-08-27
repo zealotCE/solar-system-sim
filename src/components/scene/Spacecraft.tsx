@@ -1,6 +1,6 @@
 import { Html, Line } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import type { Line2 } from 'three-stdlib'
 
@@ -11,12 +11,14 @@ import {
 } from '@/data/trajectoryRegistry'
 import {
   SPACECRAFT,
+  getEarthCraftDetailReferenceRadius,
   getCraftFocusRadius,
   getCraftPhysicalSpan,
   getDeepProbeTrailCursorStateAtJd,
   getDeepProbeTrailLodGuide,
   getDeepProbeTrailWaypoints,
   getSimplifiedCraftOrbitTrailPoints,
+  getSpacecraftAnchorPosition,
   getSpacecraftPlacement,
   isCraftSceneVisible,
   isCraftTrailOnlyArchiveVisible,
@@ -33,11 +35,19 @@ import {
   HORIZONS_TRAIL_QUALITY_ORDER,
   MOON_ORBIT_MAX_SEGMENTS,
   PARKER_ORBIT_MAX_SEGMENTS,
+  SCREEN_SPACE_LOD_EVALUATION_FRAMES,
   getClosedOrbitSegmentTiers,
   getClosedOrbitTransitionThresholds,
   getPolylineSagittaSamples,
   getPolylineBoundingRadius,
+  getWorldPerPixel,
 } from '@/lib/screenSpaceLod'
+import {
+  ARTIFICIAL_TRAIL_UPDATE_FRAMES,
+  getLocalOrbitDisplayTime,
+  isEarthNeighborhoodCraft,
+  selectEarthCraftDetailVisibility,
+} from '@/lib/earthCraftLod'
 import { getCraftModel } from '@/lib/spacecraftModels'
 import {
   ACTUAL_TRAJECTORY_GRADIENT_START,
@@ -125,13 +135,98 @@ function getFractionTrailColors(
   )
 }
 
+function EarthCraftOverviewLabels({
+  crafts,
+}: {
+  crafts: readonly SpacecraftData[]
+}) {
+  const groupRef = useRef<THREE.Group>(null)
+  const {
+    simTime,
+    simTimeRef,
+    selectPlanet,
+    showLabels,
+    orbitScale,
+    eccentricityScale,
+    inclinationScale,
+    trueScale,
+    englishOnly,
+  } = useSimulation()
+  const modifiers = useMemo(
+    () => ({
+      orbitScale,
+      eccentricityScale,
+      inclinationScale,
+      trueScale,
+    }),
+    [orbitScale, eccentricityScale, inclinationScale, trueScale],
+  )
+  const referenceCraft = crafts[0]
+  const initialAnchor = referenceCraft
+    ? getSpacecraftAnchorPosition(referenceCraft, simTime, modifiers)
+    : ([0, 0, 0] as const)
+
+  useFrame(() => {
+    if (!referenceCraft || !groupRef.current) return
+    groupRef.current.position.set(
+      ...getSpacecraftAnchorPosition(
+        referenceCraft,
+        simTimeRef.current,
+        modifiers,
+      ),
+    )
+  })
+
+  if (!showLabels || !referenceCraft) return null
+  return (
+    <group ref={groupRef} position={initialAnchor}>
+      <Html
+        center
+        eps={0.5}
+        zIndexRange={[13, 1]}
+        style={{ pointerEvents: 'auto' }}
+      >
+        <div className="earth-craft-cluster">
+          <div className="earth-craft-cluster__heading">
+            <span>{englishOnly ? 'NEAR-EARTH' : '近地任务'}</span>
+            <span>{crafts.length}</span>
+          </div>
+          <div className="earth-craft-cluster__targets">
+            {crafts.map((craft) => (
+              <button
+                key={craft.id}
+                type="button"
+                data-craft-id={craft.id}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  selectPlanet(craft.id)
+                }}
+              >
+                <span
+                  className="earth-craft-cluster__dot"
+                  style={{ backgroundColor: craft.color }}
+                />
+                {englishOnly ? craft.englishName : craft.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Html>
+    </group>
+  )
+}
+
 function ArtificialOrbitTrail({ craft }: { craft: SpacecraftData }) {
   const groupRef = useRef<THREE.Group>(null)
   const lineRef = useRef<Line2>(null)
+  const updateFrameRef = useRef(0)
+  const lastDisplayTimeRef = useRef(Number.NaN)
   const {
     selectedPlanetId,
     simTimeRef,
     orbitEpoch,
+    isPlaying,
+    speed,
     orbitScale,
     eccentricityScale,
     inclinationScale,
@@ -217,18 +312,33 @@ function ArtificialOrbitTrail({ craft }: { craft: SpacecraftData }) {
   const lineStyle = getOrbitLineStyle('artificial', selected)
 
   useFrame(() => {
-    const placement = getSpacecraftPlacement(
-      craft,
-      simTimeRef.current,
-      null,
-      modifiers,
+    groupRef.current?.position.set(
+      ...getSpacecraftAnchorPosition(
+        craft,
+        simTimeRef.current,
+        modifiers,
+      ),
     )
-    if (!placement) return
-    groupRef.current?.position.set(...placement.anchor)
     if (selected || !lineRef.current) return
+    updateFrameRef.current += 1
+    if (
+      updateFrameRef.current % ARTIFICIAL_TRAIL_UPDATE_FRAMES !==
+      0
+    ) {
+      return
+    }
+    const displayTime = getLocalOrbitDisplayTime({
+      simTime: simTimeRef.current,
+      orbitEpoch,
+      speed,
+      orbitalPeriod: craft.orbitalPeriod,
+      isPlaying,
+    })
+    if (displayTime === lastDisplayTimeRef.current) return
+    lastDisplayTimeRef.current = displayTime
     const livePoints = getSimplifiedCraftOrbitTrailPoints(
       craft,
-      simTimeRef.current,
+      displayTime,
       modifiers,
       renderedSegments,
       visibleFraction,
@@ -279,6 +389,8 @@ function SpacecraftMarker({
   const {
     simTimeRef,
     simTime,
+    isPlaying,
+    speed,
     selectPlanet,
     selectedPlanetId,
     showLabels,
@@ -461,13 +573,30 @@ function SpacecraftMarker({
   ])
 
   useFrame(({ camera }, delta) => {
-    const placement = getSpacecraftPlacement(craft, simTimeRef.current, trajectory, {
-      orbitScale,
-      eccentricityScale,
-      inclinationScale,
-      planetScale,
-      trueScale,
-    })
+    const currentTime = simTimeRef.current
+    const placementTime =
+      craft.anchor === 'earth'
+        ? getLocalOrbitDisplayTime({
+            simTime: currentTime,
+            orbitEpoch,
+            speed,
+            orbitalPeriod: craft.orbitalPeriod,
+            isPlaying,
+          })
+        : currentTime
+    const placement = getSpacecraftPlacement(
+      craft,
+      currentTime,
+      trajectory,
+      {
+        orbitScale,
+        eccentricityScale,
+        inclinationScale,
+        planetScale,
+        trueScale,
+      },
+      placementTime,
+    )
     if (!placement) return
     const { anchor, local } = placement
 
@@ -808,8 +937,43 @@ function SpacecraftMarker({
 }
 
 export function SpacecraftFleet() {
-  const { showOrbits, simTime, selectedPlanetId } = useSimulation()
+  const {
+    showOrbits,
+    simTime,
+    simTimeRef,
+    selectedPlanetId,
+    orbitScale,
+    eccentricityScale,
+    inclinationScale,
+    planetScale,
+    trueScale,
+  } = useSimulation()
+  const earthDetailFrameRef = useRef(0)
+  const earthDetailRef = useRef(false)
+  const [earthDetailVisible, setEarthDetailVisible] = useState(false)
+  const earthModifiers = useMemo(
+    () => ({
+      orbitScale,
+      eccentricityScale,
+      inclinationScale,
+      planetScale,
+      trueScale,
+    }),
+    [
+      orbitScale,
+      eccentricityScale,
+      inclinationScale,
+      planetScale,
+      trueScale,
+    ],
+  )
   const visibleCraft = SPACECRAFT.filter((craft) => isCraftSceneVisible(craft, simTime))
+  const visibleEarthCraft = visibleCraft.filter((craft) =>
+    isEarthNeighborhoodCraft(craft.anchor),
+  )
+  const selectedEarthCraft = visibleEarthCraft.some(
+    (craft) => craft.id === selectedPlanetId,
+  )
   const selectedArchiveCraft = SPACECRAFT.find(
     (craft) =>
       craft.id === selectedPlanetId &&
@@ -818,16 +982,64 @@ export function SpacecraftFleet() {
   const mountedCraft = selectedArchiveCraft
     ? [...visibleCraft, selectedArchiveCraft]
     : visibleCraft
+  const showEarthDetail = selectedEarthCraft || earthDetailVisible
+  const detailedCraft = mountedCraft.filter(
+    (craft) =>
+      showEarthDetail || !isEarthNeighborhoodCraft(craft.anchor),
+  )
   const simplifiedOrbitCraft = visibleCraft.filter(
     (craft) =>
       !craft.trajectoryId &&
       craft.anchor !== 'earth-l2' &&
-      Boolean(craft.orbitalPeriod),
+      Boolean(craft.orbitalPeriod) &&
+      (showEarthDetail || !isEarthNeighborhoodCraft(craft.anchor)),
   )
   const idleTrajectoryIds = visibleCraft
     .filter((craft) => craft.trajectoryId && craft.id !== selectedPlanetId)
     .map((craft) => craft.trajectoryId!)
   const idleQueueKey = idleTrajectoryIds.join('|')
+
+  useFrame(({ camera, size }) => {
+    earthDetailFrameRef.current += 1
+    if (
+      earthDetailFrameRef.current %
+        SCREEN_SPACE_LOD_EVALUATION_FRAMES !==
+        0 ||
+      !(camera instanceof THREE.PerspectiveCamera)
+    ) {
+      return
+    }
+    const referenceCraft = visibleEarthCraft[0]
+    if (!referenceCraft) {
+      if (earthDetailRef.current) {
+        earthDetailRef.current = false
+        setEarthDetailVisible(false)
+      }
+      return
+    }
+    const [x, y, z] = getSpacecraftAnchorPosition(
+      referenceCraft,
+      simTimeRef.current,
+      earthModifiers,
+    )
+    scratchWorld.set(x, y, z)
+    const worldPerPixel = getWorldPerPixel(
+      camera.position.distanceTo(scratchWorld),
+      size.height,
+      camera.fov,
+    )
+    const projectedRadiusPixels =
+      getEarthCraftDetailReferenceRadius(trueScale, planetScale) /
+      worldPerPixel
+    const next = selectEarthCraftDetailVisibility({
+      projectedRadiusPixels,
+      currentlyVisible: earthDetailRef.current,
+      selected: selectedEarthCraft,
+    })
+    if (next === earthDetailRef.current) return
+    earthDetailRef.current = next
+    setEarthDetailVisible(next)
+  })
 
   useEffect(() => {
     if (!idleQueueKey) return
@@ -840,12 +1052,15 @@ export function SpacecraftFleet() {
 
   return (
     <group>
+      {!showEarthDetail && visibleEarthCraft.length ? (
+        <EarthCraftOverviewLabels crafts={visibleEarthCraft} />
+      ) : null}
       {showOrbits
         ? simplifiedOrbitCraft.map((craft) => (
             <ArtificialOrbitTrail key={`${craft.id}-orbit`} craft={craft} />
           ))
         : null}
-      {mountedCraft.map((craft) => (
+      {detailedCraft.map((craft) => (
         <SpacecraftMarker
           key={craft.id}
           craft={craft}
