@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import * as THREE from 'three'
 
 import {
+  EARTH_L2_DISTANCE_AU,
   SPACECRAFT,
+  STYLIZED_EARTH_L2_RADIUS,
   getEarthL2TransferState,
   getEarthCraftDetailReferenceRadius,
   getCraftPhysicalSpan,
@@ -11,6 +13,7 @@ import {
   getSpacecraftAnchorPosition,
   getSpacecraftPlacement,
 } from '../src/data/spacecraft.ts'
+import { MOON } from '../src/data/planets.ts'
 import {
   ARTIFICIAL_TRAIL_UPDATE_FRAMES,
   EARTH_CRAFT_DETAIL_ENTER_RADIUS_PX,
@@ -98,6 +101,7 @@ assert.equal(
 )
 
 const hubble = SPACECRAFT.find((craft) => craft.id === 'hubble')!
+const jwst = SPACECRAFT.find((craft) => craft.id === 'jwst')!
 const roman = SPACECRAFT.find((craft) => craft.id === 'roman')!
 const romanLaunch = utcMsToSimTime(Date.UTC(2026, 7, 30))
 const romanMidTransfer = utcMsToSimTime(Date.UTC(2026, 9, 14))
@@ -112,8 +116,48 @@ assert(romanMidState.transferProgress < 0.51)
 assert(romanMidState.radialAu > romanLaunchState.radialAu)
 assert(romanMidState.radialAu < romanArrivalState.radialAu)
 assert.equal(romanArrivalState.transferProgress, 1)
-assert.equal(romanArrivalState.radialAu, 0.01)
-assert(romanArrivalState.distanceAu >= 0.01)
+assert.equal(romanArrivalState.radialAu, EARTH_L2_DISTANCE_AU)
+assert(romanArrivalState.distanceAu >= EARTH_L2_DISTANCE_AU)
+assert(
+  STYLIZED_EARTH_L2_RADIUS > MOON.orbitRadius * 3.8,
+  'stylized L2 must remain beyond the lunar orbit at the physical distance ratio',
+)
+const jwstStylizedPlacement = getSpacecraftPlacement(
+  jwst,
+  romanL2Arrival,
+  null,
+  { trueScale: false },
+)
+assert(jwstStylizedPlacement)
+const jwstStylizedRadial = Math.hypot(
+  jwstStylizedPlacement.local[0],
+  jwstStylizedPlacement.local[2],
+)
+assert(
+  Math.abs(jwstStylizedRadial - STYLIZED_EARTH_L2_RADIUS) < 1e-9,
+  'the operational L2 radius must share the Moon local-distance mapping',
+)
+const romanLaunchPlacement = getSpacecraftPlacement(
+  roman,
+  romanLaunch,
+  null,
+  { trueScale: false },
+)
+const romanArrivalPlacement = getSpacecraftPlacement(
+  roman,
+  romanL2Arrival,
+  null,
+  { trueScale: false },
+)
+assert(romanLaunchPlacement && romanArrivalPlacement)
+assert(
+  Math.hypot(...romanLaunchPlacement.local) < MOON.orbitRadius,
+  'Roman must begin its representative transfer inside the Moon distance',
+)
+assert(
+  Math.hypot(...romanArrivalPlacement.local) > MOON.orbitRadius,
+  'an operational L2 observatory must render beyond the Moon in stylized mode',
+)
 
 assert(
   getLocalOrbitRevolutionsPerSecond(1, hubble.orbitalPeriod) > 10,

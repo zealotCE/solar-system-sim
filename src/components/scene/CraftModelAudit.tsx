@@ -46,7 +46,7 @@ function AuditEntry({
 }
 
 /**
- * Test-only probe that loads every official craft model without depending on
+ * Test-only probe that loads every bundled craft model without depending on
  * mission dates or trajectory availability. It emits no pixels.
  */
 export function CraftModelAudit() {

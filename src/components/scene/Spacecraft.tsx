@@ -480,6 +480,7 @@ function SpacecraftMarker({
     followPlanet,
     englishOnly,
     orbitEpoch,
+    tiangongModelVariant,
   } = useSimulation()
   const locator = useMemo(() => getCraftLocatorTexture(), [])
   const selected = selectedPlanetId === craft.id
@@ -524,7 +525,7 @@ function SpacecraftMarker({
     // scale of the spacecraft marker.
     hit: baseSizes.hit,
   }
-  const model = getCraftModel(craft.id)
+  const model = getCraftModel(craft.id, tiangongModelVariant)
   const markDetailedModelReady = useCallback(() => {
     setDetailedModelState('ready')
   }, [])
@@ -1083,6 +1084,8 @@ function SpacecraftMarker({
                 <CraftGlbModel
                   url={model.url}
                   fitSpan={physicalSpan}
+                  pitch={model.previewPitch}
+                  yaw={model.previewYaw}
                   centerOnVisualCore
                   fallback={proceduralMarker}
                   onReady={markDetailedModelReady}
@@ -1097,6 +1100,8 @@ function SpacecraftMarker({
                   <CraftGlbModel
                     url={model.url}
                     fitCoreRadius={0.5}
+                    pitch={model.previewPitch}
+                    yaw={model.previewYaw}
                     centerOnVisualCore
                     identification
                     identificationOpacity={0.9}
@@ -1113,6 +1118,8 @@ function SpacecraftMarker({
               <CraftGlbModel
                 url={model.url}
                 fitRadius={stylizedModelRadius}
+                pitch={model.previewPitch}
+                yaw={model.previewYaw}
                 identification
                 fallback={proceduralMarker}
                 onReady={markDetailedModelReady}

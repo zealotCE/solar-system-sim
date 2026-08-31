@@ -8,7 +8,10 @@ import { getMinorBodyById, type MinorBodyData } from '@/data/minorBodies'
 import { getSpacecraftById, type SpacecraftData } from '@/data/spacecraft'
 import { getGlowTexture } from '@/lib/planetTextures'
 import { getMinorBodyModel } from '@/lib/minorBodyModels'
-import { getCraftModel } from '@/lib/spacecraftModels'
+import {
+  getCraftModel,
+  type CraftModelVariant,
+} from '@/lib/spacecraftModels'
 import { useBodySurface } from '@/lib/textureAssets'
 import { CraftGlbModel } from '@/components/scene/CraftGlbModel'
 import { PlanetRings } from '@/components/scene/PlanetRings'
@@ -279,9 +282,15 @@ function ProceduralCraftModel({ craft }: { craft: SpacecraftData }) {
   return model
 }
 
-function CraftModel({ craft }: { craft: SpacecraftData }) {
+function CraftModel({
+  craft,
+  modelVariant,
+}: {
+  craft: SpacecraftData
+  modelVariant: CraftModelVariant
+}) {
   const spinRef = useRef<THREE.Group>(null)
-  const official = getCraftModel(craft.id)
+  const official = getCraftModel(craft.id, modelVariant)
 
   useFrame((_, delta) => {
     if (spinRef.current) spinRef.current.rotation.y += delta * 0.32
@@ -290,11 +299,13 @@ function CraftModel({ craft }: { craft: SpacecraftData }) {
   return (
     <group ref={spinRef} scale={1.06}>
       {official ? (
-        // Official NASA 3D Resources model, procedural fallback while loading
-        // or if the bundled file is unavailable.
+        // Bundled attributed model, with a procedural fallback while loading
+        // or if the asset is unavailable.
         <CraftGlbModel
           url={official.url}
           fitRadius={0.92}
+          pitch={official.previewPitch}
+          yaw={official.previewYaw}
           fallback={<ProceduralCraftModel craft={craft} />}
         />
       ) : (
@@ -423,7 +434,13 @@ function PreviewMinorBody({ body }: { body: MinorBodyData }) {
   )
 }
 
-export function BodyPreview({ bodyId }: { bodyId: string }) {
+export function BodyPreview({
+  bodyId,
+  craftModelVariant = 'current',
+}: {
+  bodyId: string
+  craftModelVariant?: CraftModelVariant
+}) {
   const craft = getSpacecraftById(bodyId)
   const minorBody = getMinorBodyById(bodyId)
 
@@ -447,7 +464,7 @@ export function BodyPreview({ bodyId }: { bodyId: string }) {
         color="#6aa7c2"
       />
       {craft ? (
-        <CraftModel craft={craft} />
+        <CraftModel craft={craft} modelVariant={craftModelVariant} />
       ) : minorBody ? (
         <PreviewMinorBody body={minorBody} />
       ) : (

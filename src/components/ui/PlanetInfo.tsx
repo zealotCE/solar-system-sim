@@ -45,13 +45,43 @@ import type { Trajectory } from '@/data/trajectoryTypes'
 import { useSimulation } from '@/hooks/useSimulation'
 import { useTrajectory } from '@/hooks/useTrajectory'
 import { getMinorBodyModel } from '@/lib/minorBodyModels'
-import { getCraftModel } from '@/lib/spacecraftModels'
+import {
+  getCraftModel,
+  TIANGONG_CROSS_SCENARIO_DATE,
+  type CraftModelVariant,
+  type TiangongModelMode,
+} from '@/lib/spacecraftModels'
 import { cn, formatDays } from '@/lib/utils'
 import { BodyPreview } from './BodyPreview'
 import { Button } from './button'
 
 type PlanetInfoProps = {
   compact?: boolean
+}
+
+function getTiangongConfigurationNote(
+  mode: TiangongModelMode,
+  variant: CraftModelVariant,
+  englishOnly: boolean,
+): string {
+  if (mode === 'auto') {
+    if (variant === 'planned') {
+      return englishOnly
+        ? `PLANNING SCENARIO · AUTO FROM ${TIANGONG_CROSS_SCENARIO_DATE} · NOT AN OFFICIAL LAUNCH DATE`
+        : `规划推演 · ${TIANGONG_CROSS_SCENARIO_DATE} 起自动显示 · 非官方发射日期`
+    }
+    return englishOnly
+      ? `AUTO TIMELINE · CURRENT T CONFIGURATION · SCENARIO STARTS ${TIANGONG_CROSS_SCENARIO_DATE}`
+      : `自动时间线 · 当前 T 字 · ${TIANGONG_CROSS_SCENARIO_DATE} 起进入规划推演`
+  }
+  if (mode === 'planned') {
+    return englishOnly
+      ? 'MANUAL PLANNING VIEW · EXPANSION MODULE NOT YET LAUNCHED'
+      : '手动规划预览 · 扩展舱尚未发射'
+  }
+  return englishOnly
+    ? 'MANUALLY LOCKED · CURRENT T CONFIGURATION'
+    : '手动锁定 · 当前 T 字构型'
 }
 
 /** Known natural satellite counts (2026), not just the ones we render. */
@@ -347,6 +377,9 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
     pureChinese,
     englishOnly,
     trueScale,
+    tiangongModelMode,
+    tiangongModelVariant,
+    setTiangongModelMode,
     selectedStoryEvent,
     selectStoryEvent,
   } = useSimulation()
@@ -449,7 +482,9 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
           : '近地/日心航天器采用简化轨道参数示意，并非实时测轨。远景只显示稳定任务标签；高速播放无法分辨近地周期时，会把可视角速度限制为最高 0.16 圈/秒并保持连续运动，暂停或 0.01× 时使用精确模型相位。'
         : null
     : null
-  const craftModel = craft ? getCraftModel(craft.id) : null
+  const craftModel = craft
+    ? getCraftModel(craft.id, tiangongModelVariant)
+    : null
   const hasPredictedTrajectory = Boolean(
     craft?.trajectoryCoverage &&
       craft.trajectoryCoverage.predictionStartsJdTdb <
@@ -519,7 +554,10 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
               style={{ filter: `drop-shadow(0 0 22px color-mix(in srgb, ${color}, transparent 62%))` }}
               title={englishOnly ? 'Drag to rotate preview' : '拖拽旋转预览'}
             >
-              <BodyPreview bodyId={selectedPlanetId} />
+              <BodyPreview
+                bodyId={selectedPlanetId}
+                craftModelVariant={tiangongModelVariant}
+              />
             </div>
           </div>
           <div className="min-w-0">
@@ -542,6 +580,74 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
           </div>
         </div>
       </section>
+
+      {craft?.id === 'tiangong' ? (
+        <section
+          className="rounded-xl border border-cyan-200/10 bg-cyan-400/[0.025] p-2.5"
+          data-tiangong-configuration={tiangongModelVariant}
+          data-tiangong-configuration-mode={tiangongModelMode}
+        >
+          <div className="flex flex-col gap-2">
+            <span className="font-display text-[9px] tracking-[0.16em] text-cyan-100/55">
+              {englishOnly
+                ? 'CONFIGURATION VIEW'
+                : pureChinese
+                  ? '构型显示'
+                  : '构型显示 · CONFIGURATION'}
+            </span>
+            <div
+              className="grid grid-cols-3 rounded-lg border border-white/10 bg-slate-950/45 p-0.5"
+              role="radiogroup"
+              aria-label={englishOnly ? 'Tiangong configuration' : '天宫构型'}
+            >
+              {(['auto', 'current', 'planned'] as const).map((mode) => {
+                const active = tiangongModelMode === mode
+                const label =
+                  mode === 'auto'
+                    ? englishOnly
+                      ? 'AUTO'
+                      : '自动'
+                    : mode === 'current'
+                    ? englishOnly
+                      ? 'CURRENT'
+                      : pureChinese
+                        ? '当前'
+                        : '当前 · NOW'
+                    : englishOnly
+                      ? 'PLANNED'
+                      : pureChinese
+                        ? '规划'
+                        : '规划 · PLAN'
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    data-configuration-mode={mode}
+                    className={cn(
+                      'whitespace-nowrap rounded-md px-2 py-1 text-[8px] font-semibold tracking-[0.08em] transition',
+                      active
+                        ? 'bg-cyan-300/15 text-cyan-100 ring-1 ring-cyan-200/25'
+                        : 'text-slate-500 hover:bg-white/5 hover:text-slate-300',
+                    )}
+                    onClick={() => setTiangongModelMode(mode)}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <p className="mt-2 text-[9px] leading-relaxed text-slate-500">
+            {getTiangongConfigurationNote(
+              tiangongModelMode,
+              tiangongModelVariant,
+              englishOnly,
+            )}
+          </p>
+        </section>
+      ) : null}
 
       {trajectoryUnavailable ? (
         <section

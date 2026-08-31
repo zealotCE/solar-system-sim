@@ -2,6 +2,7 @@ import { icrfToEclipticAu, simTimeToJd } from './ephemeris'
 import {
   AU_UNITS,
   KM_PER_AU,
+  MOON,
   PLANETS,
   eclipticToScene,
   getKeplerPosition,
@@ -99,6 +100,17 @@ const EARTH = PLANETS.find((planet) => planet.id === 'earth')!
 const JUPITER = PLANETS.find((planet) => planet.id === 'jupiter')!
 const UNIX_EPOCH_JD = 2440587.5
 const MS_PER_DAY = 86_400_000
+export const EARTH_L2_DISTANCE_KM = 1_500_000
+export const EARTH_L2_DISTANCE_AU = EARTH_L2_DISTANCE_KM / KM_PER_AU
+/**
+ * Preserve the Earth–Moon–L2 distance ordering in the stylized local system.
+ * This shares the Moon's local km→display scale instead of placing L2 at an
+ * unrelated hard-coded radius inside the lunar orbit.
+ */
+export const STYLIZED_EARTH_L2_RADIUS =
+  MOON.orbitRadius * (EARTH_L2_DISTANCE_KM / MOON.realOrbitKm)
+const STYLIZED_EARTH_LOCAL_UNITS_PER_AU =
+  (MOON.orbitRadius * KM_PER_AU) / MOON.realOrbitKm
 
 function jdTdbToDate(jdTdb: number): string {
   return new Date((jdTdb - UNIX_EPOCH_JD) * MS_PER_DAY).toISOString().slice(0, 10)
@@ -552,10 +564,12 @@ export const SPACECRAFT: SpacecraftData[] = [
     provenance: {
       source: 'NASA International Space Station overview',
       sourceUrl: 'https://www.nasa.gov/international-space-station/',
-      sourceEpoch: 'Representative low-Earth-orbit period and altitude',
+      sourceEpoch:
+        'NASA ISS (B) assembled-station model; representative low-Earth orbit',
       frame: 'Earth-centered scene coordinates',
       modelClass: 'representative-local-orbit',
-      caveat: 'Representative local craft: a display orbit, not live TLE-derived position or attitude data.',
+      caveat:
+        'The NASA station mesh is static and does not time-resolve visiting vehicles, temporary hardware, or future deorbit configuration. Position and attitude are representative rather than live TLE-derived.',
     },
     velocityKms: 7.66,
     anchor: 'earth',
@@ -584,12 +598,14 @@ export const SPACECRAFT: SpacecraftData[] = [
     kind: 'station',
     color: '#f87171',
     provenance: {
-      source: 'China Manned Space Agency, China Space Station',
-      sourceUrl: 'https://www.cmse.gov.cn/',
-      sourceEpoch: 'Representative low-Earth-orbit period and altitude',
+      source: 'CMSA / CNSA public configuration and mission releases',
+      sourceUrl: 'https://www.cmse.gov.cn/xwzx/202605/t20260511_57463.html',
+      sourceEpoch:
+        '2026-08-31 three-module T configuration; Shenzhou-23 and Tianzhou-10 docked',
       frame: 'Earth-centered scene coordinates',
       modelClass: 'representative-local-orbit',
-      caveat: 'Representative local craft: a display orbit, not live TLE-derived position or attitude data.',
+      caveat:
+        'The station geometry is a project-authored visual reconstruction, not official CAD. The announced 20-tonne expansion module had not launched by 2026-08-31 and is not shown. Position and attitude remain representative rather than TLE-derived.',
     },
     velocityKms: 7.68,
     anchor: 'earth',
@@ -601,9 +617,9 @@ export const SPACECRAFT: SpacecraftData[] = [
     orbitNote: '~390 km 近地轨道',
     orbitNoteEn: '~390 km LOW EARTH ORBIT',
     description:
-      '中国自主建造的三舱 T 字构型空间站，天和核心舱加问天、梦天实验舱，常态化驻留三名航天员，开展空间科学与技术实验。',
+      '中国自主建造的三舱 T 字构型空间站，由天和核心舱与两侧的问天、梦天实验舱组成。2026 年 8 月在轨组合体还包括后向对接的天舟十号及径向对接的神舟二十三号；已公布的多功能扩展舱尚未发射，未来才会把永久构型升级为“十”字。',
     descriptionEn:
-      'China’s T-shaped three-module space station combines the Tianhe core with the Wentian and Mengtian laboratory modules for long-duration crews and research.',
+      'China’s three-module T-shaped station combines Tianhe with the lateral Wentian and Mengtian laboratories. On 31 August 2026, Tianzhou-10 was docked aft and Shenzhou-23 at the nadir port; the announced multifunction expansion module had not yet launched and will create the permanent cross configuration only in the future.',
   },
 ]
 
@@ -651,7 +667,8 @@ export function getEarthL2TransferState(
   const pathProgress = 1 - Math.pow(1 - transferProgress, 1.15)
   const initialOffsetAu = 0.00005
   const radialAu =
-    initialOffsetAu + (0.01 - initialOffsetAu) * pathProgress
+    initialOffsetAu +
+    (EARTH_L2_DISTANCE_AU - initialOffsetAu) * pathProgress
   const haloRadiusAu = Math.max(0, craft.l2HaloRadiusAu ?? 0)
   const haloRamp =
     transferProgress *
@@ -1289,12 +1306,15 @@ export function getSpacecraftPlacement(
     const radialX = ex / length
     const radialZ = ez / length
     const state = getEarthL2TransferState(craft, simTime)
+    const stylizedTransferStart = 0.55 * localScale
     const radial = trueScale
       ? state.radialAu * AU_UNITS
-      : (0.55 + state.pathProgress * 0.5) * localScale
+      : stylizedTransferStart +
+        (STYLIZED_EARTH_L2_RADIUS - stylizedTransferStart) *
+          state.pathProgress
     const haloScale = trueScale
       ? AU_UNITS
-      : (0.18 * localScale) / Math.max(craft.l2HaloRadiusAu ?? 0.003, 1e-9)
+      : STYLIZED_EARTH_LOCAL_UNITS_PER_AU
     const tangential = state.tangentialAu * haloScale
     const fixedLift =
       (craft.l2HaloRadiusAu ?? 0) > 0 ? 0 : trueScale ? 0.0002 : 0.14

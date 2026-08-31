@@ -1,7 +1,7 @@
 {
   "name": "solar-system-sim",
   "private": true,
-  "version": "1.5.2",
+  "version": "1.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,8 @@
     "preview": "vite preview --port 4317",
     "test:visual": "playwright test --config playwright.config.ts",
     "test:visual:update": "npm run test:visual -- --update-snapshots",
+    "generate:model:tiangong": "node scripts/generate-tiangong-model.mjs",
+    "optimize:model:roman": "node scripts/optimize-roman-model.mjs",
     "validate:horizons": "node scripts/validate-horizons-trajectories.mjs",
     "validate:trajectory-registry": "node scripts/run-ts-validator.mjs scripts/validate-trajectory-registry.ts",
     "validate:lod": "node scripts/run-ts-validator.mjs scripts/validate-screen-space-lod.ts",

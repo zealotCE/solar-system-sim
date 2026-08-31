@@ -214,12 +214,12 @@ const SPACECRAFT_ARCHIVES: Record<string, ArchiveProfile> = {
   tiangong: {
     objective: '支持中国长期载人飞行、空间科学实验、技术验证和国际合作载荷。',
     objectiveEn: 'Support long-duration Chinese human spaceflight, science, technology demonstrations, and international payloads.',
-    legacy: '三舱组合体建立了中国常态化近地轨道载人科研平台。',
-    legacyEn: 'The three-module complex established China’s permanent crewed research platform in low Earth orbit.',
+    legacy: '天和、问天、梦天三舱组合体建立了中国常态化近地轨道载人科研平台；2026 年启动的扩容工程将来会增加第四个多功能舱，但截至 8 月底仍是三舱 T 字永久构型。',
+    legacyEn: 'Tianhe, Wentian, and Mengtian established China’s permanent crewed research platform in low Earth orbit. An expansion program began in 2026, but the fourth multifunction module had not launched by the end of August and the permanent station remained a three-module T.',
     highlights: [
       { zh: '2021 年发射天和核心舱', en: 'TIANHE CORE MODULE LAUNCHED IN 2021' },
       { zh: '问天与梦天组成 T 字构型', en: 'WENTIAN AND MENGTIAN FORM A T-SHAPED COMPLEX' },
-      { zh: '支持长期三人乘组', en: 'SUPPORTS LONG-DURATION THREE-PERSON CREWS' },
+      { zh: '2026 年宣布启动十字构型扩容', en: 'CROSS-CONFIGURATION EXPANSION ANNOUNCED IN 2026' },
     ],
   },
 }

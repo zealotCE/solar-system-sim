@@ -22,6 +22,11 @@ import {
 } from '../data/spacecraft'
 import { ensureTrajectory } from '../data/trajectoryRegistry'
 import { nextLabelMode, type LabelMode } from '../lib/labelModes'
+import {
+  resolveTiangongModelVariant,
+  type CraftModelVariant,
+  type TiangongModelMode,
+} from '../lib/spacecraftModels'
 import { SIM_TIME_MAX_YEARS, SIM_TIME_MIN_YEARS, utcMsToSimTime } from '../lib/utils'
 import { isVisualTestMode } from '../lib/visualTest'
 
@@ -72,6 +77,8 @@ export type SimulationState = {
   languageMode: LanguageMode
   pureChinese: boolean
   englishOnly: boolean
+  tiangongModelMode: TiangongModelMode
+  tiangongModelVariant: CraftModelVariant
   selectedStoryEvent: SelectedStoryEvent | null
   togglePlay: () => void
   setSpeed: (value: number) => void
@@ -102,6 +109,7 @@ export type SimulationState = {
   applyScenePreset: (preset: Exclude<ScenePreset, 'custom'>) => void
   resetCamera: () => void
   setLanguageMode: (value: LanguageMode) => void
+  setTiangongModelMode: (value: TiangongModelMode) => void
   selectStoryEvent: (storyId: string, eventId: string) => void
   clearStoryEvent: () => void
   syncDisplayTime: () => void
@@ -147,6 +155,12 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
   })
   const pureChinese = languageMode === 'zh'
   const englishOnly = languageMode === 'en'
+  const [tiangongModelMode, setTiangongModelMode] =
+    useState<TiangongModelMode>('auto')
+  const tiangongModelVariant = resolveTiangongModelVariant(
+    simTime,
+    tiangongModelMode,
+  )
   const [selectedStoryEvent, setSelectedStoryEvent] = useState<SelectedStoryEvent | null>(null)
   const simTimeRef = useRef(0)
 
@@ -472,6 +486,8 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       languageMode,
       pureChinese,
       englishOnly,
+      tiangongModelMode,
+      tiangongModelVariant,
       selectedStoryEvent,
       togglePlay,
       setSpeed,
@@ -502,6 +518,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       resetCamera,
       syncDisplayTime,
       setLanguageMode,
+      setTiangongModelMode,
       selectStoryEvent,
       clearStoryEvent,
     }),
@@ -536,6 +553,8 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
       languageMode,
       pureChinese,
       englishOnly,
+      tiangongModelMode,
+      tiangongModelVariant,
       selectedStoryEvent,
       togglePlay,
       setSpeed,

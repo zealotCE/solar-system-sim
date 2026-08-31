@@ -21,6 +21,9 @@ type CraftGlbModelProps = {
   fitSpan?: number
   /** Target robust visual-core radius, discounting long thin appendages. */
   fitCoreRadius?: number
+  /** Presentation rotation for models whose authored forward/up axes vary. */
+  pitch?: number
+  yaw?: number
   /** Align the readable spacecraft body, rather than its full bounding box. */
   centerOnVisualCore?: boolean
   /** Apply bounded studio lighting to a non-physical identification model. */
@@ -110,6 +113,8 @@ function NormalizedGltf({
   fitRadius,
   fitSpan,
   fitCoreRadius,
+  pitch,
+  yaw,
   centerOnVisualCore,
   identification,
   identificationOpacity,
@@ -120,6 +125,8 @@ function NormalizedGltf({
   fitRadius?: number
   fitSpan?: number
   fitCoreRadius?: number
+  pitch?: number
+  yaw?: number
   centerOnVisualCore?: boolean
   identification?: boolean
   identificationOpacity?: number
@@ -131,7 +138,7 @@ function NormalizedGltf({
     const metrics = measureModelPresentation(scene)
     const clone = scene.clone(true)
     // glTF clones share materials by default. Clone them before neutralizing
-    // emissive channels so the official models react to scene/studio lighting
+    // emissive channels so bundled models react to scene/studio lighting
     // instead of appearing to emit light themselves.
     clone.traverse((object) => {
       if (!(object instanceof THREE.Mesh)) return
@@ -165,6 +172,7 @@ function NormalizedGltf({
     clone.position.sub(new THREE.Vector3(...center))
     const pivot = new THREE.Group()
     pivot.add(clone)
+    pivot.rotation.set(pitch ?? 0, yaw ?? 0, 0)
     const requestedScale =
       fitSpan !== undefined
         ? metrics.longestSpan > 0
@@ -184,6 +192,8 @@ function NormalizedGltf({
     fitRadius,
     fitSpan,
     fitCoreRadius,
+    pitch,
+    yaw,
     centerOnVisualCore,
     identification,
     identificationOpacity,
@@ -206,7 +216,7 @@ class GlbErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error) {
-    console.warn('Official craft model failed to load, using procedural fallback', error)
+    console.warn('Bundled craft model failed to load, using procedural fallback', error)
     this.props.onError?.()
   }
 
@@ -217,7 +227,7 @@ class GlbErrorBoundary extends Component<
 }
 
 /**
- * Official NASA GLB with graceful degradation: while loading — and if the
+ * Bundled spacecraft GLB with graceful degradation: while loading — and if the
  * file is missing or corrupt — the procedural fallback is shown instead.
  */
 export function CraftGlbModel({
@@ -225,6 +235,8 @@ export function CraftGlbModel({
   fitRadius,
   fitSpan,
   fitCoreRadius,
+  pitch = 0,
+  yaw = 0,
   centerOnVisualCore = false,
   identification = false,
   identificationOpacity,
@@ -241,6 +253,8 @@ export function CraftGlbModel({
           fitRadius={fitRadius}
           fitSpan={fitSpan}
           fitCoreRadius={fitCoreRadius}
+          pitch={pitch}
+          yaw={yaw}
           centerOnVisualCore={centerOnVisualCore}
           identification={identification}
           identificationOpacity={identificationOpacity}

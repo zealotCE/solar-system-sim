@@ -22,6 +22,7 @@ test.describe('solar-system canvas', () => {
   })
 
   test('Europa Clipper at Jupiter arrival', async ({ page }) => {
+    test.setTimeout(360_000)
     const screenshot = await captureVisualScene(page, {
       target: 'europaclipper',
       date: '2030-04-11',

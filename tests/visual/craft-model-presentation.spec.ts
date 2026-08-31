@@ -7,7 +7,7 @@ type AuditMetrics = {
   triangleCount: number
 }
 
-test('every official spacecraft model has a measurable readable core', async ({
+test('every bundled spacecraft model has a measurable readable core', async ({
   page,
 }) => {
   test.setTimeout(300_000)
@@ -23,7 +23,7 @@ test('every official spacecraft model has a measurable readable core', async ({
           const root = document.documentElement.dataset
           const actual = Number(root.visualTestModelAuditCount ?? 0)
           const expected = Number(root.visualTestModelAuditExpected ?? 0)
-          return expected >= 16 && actual === expected
+          return expected >= 18 && actual === expected
         }),
       { timeout: 240_000 },
     )
@@ -57,4 +57,13 @@ test('every official spacecraft model has a measurable readable core', async ({
     (results.pioneer10 as AuditMetrics).coreToSpanRatio,
   ).toBeLessThan(0.4)
   expect((results.roman as AuditMetrics).triangleCount).toBeGreaterThan(100)
+  expect((results.tiangong as AuditMetrics).triangleCount).toBeGreaterThan(1_000)
+  expect((results.tiangong as AuditMetrics).longestSpan).toBeGreaterThan(53)
+  expect((results.tiangong as AuditMetrics).longestSpan).toBeLessThan(56)
+  expect(
+    (results['tiangong-planned'] as AuditMetrics).triangleCount,
+  ).toBeGreaterThan(1_000)
+  expect(
+    (results['tiangong-planned'] as AuditMetrics).longestSpan,
+  ).toBeGreaterThan(53)
 })

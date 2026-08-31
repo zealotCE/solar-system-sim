@@ -147,4 +147,67 @@ test.describe('near-Earth spacecraft LOD', () => {
       timeout: 20_000,
     })
   })
+
+  test('Tiangong separates flight history from its 2028 planning scenario', async ({
+    page,
+  }) => {
+    await page.goto(
+      '/?visual-test=1#target=tiangong&date=2026-08-31&lang=en',
+      { waitUntil: 'domcontentloaded' },
+    )
+    const configuration = page.locator(
+      '[data-tiangong-configuration]',
+    )
+    await expect(configuration).toHaveAttribute(
+      'data-tiangong-configuration',
+      'current',
+    )
+    await expect(configuration).toHaveAttribute(
+      'data-tiangong-configuration-mode',
+      'auto',
+    )
+
+    const plannedAsset = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/models/tiangong-cross.glb') &&
+        response.status() === 200,
+    )
+    await configuration
+      .locator('[data-configuration-mode="planned"]')
+      .click()
+    await plannedAsset
+    await expect(configuration).toHaveAttribute(
+      'data-tiangong-configuration',
+      'planned',
+    )
+    await expect(configuration).toHaveAttribute(
+      'data-tiangong-configuration-mode',
+      'planned',
+    )
+    await expect(configuration).toContainText('MANUAL PLANNING VIEW')
+    await configuration.locator('[data-configuration-mode="auto"]').click()
+    await expect(configuration).toHaveAttribute(
+      'data-tiangong-configuration-mode',
+      'auto',
+    )
+
+    await page.goto(
+      '/?visual-test=1&case=tiangong-2028#target=tiangong&date=2028-01-01&lang=en',
+      { waitUntil: 'domcontentloaded' },
+    )
+    const futureConfiguration = page.locator(
+      '[data-tiangong-configuration]',
+    )
+    await expect(futureConfiguration).toHaveAttribute(
+      'data-tiangong-configuration-mode',
+      'auto',
+    )
+    await expect(futureConfiguration).toHaveAttribute(
+      'data-tiangong-configuration',
+      'planned',
+    )
+    await expect(futureConfiguration).toContainText(
+      'NOT AN OFFICIAL LAUNCH DATE',
+    )
+  })
 })

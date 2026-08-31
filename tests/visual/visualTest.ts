@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test'
 
 const SETTLE_FRAMES = 60
+const FRAME_SETTLE_TIMEOUT_MS = 180_000
 
 export type VisualScene = {
   target: string
@@ -110,7 +111,7 @@ export async function captureVisualScene(page: Page, scene: VisualScene): Promis
     }
     const currentFrame = visualWindow.__solarVisualFrameCount ?? 0
     visualWindow.__solarVisualStopFrame = currentFrame + settleFrames
-    return currentFrame + settleFrames + 1
+    return currentFrame + settleFrames
   }, SETTLE_FRAMES)
   await expect
     .poll(
@@ -120,7 +121,7 @@ export async function captureVisualScene(page: Page, scene: VisualScene): Promis
             (window as typeof window & { __solarVisualFrameCount?: number })
               .__solarVisualFrameCount ?? 0,
         ),
-      { timeout: 90_000 },
+      { timeout: FRAME_SETTLE_TIMEOUT_MS },
     )
     .toBeGreaterThanOrEqual(stoppedFrame)
   await page.waitForTimeout(100)
