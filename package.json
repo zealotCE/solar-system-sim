@@ -1,7 +1,7 @@
 {
   "name": "solar-system-sim",
   "private": true,
-  "version": "1.5.1",
+  "version": "1.5.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,8 @@
     "validate:horizons": "node scripts/validate-horizons-trajectories.mjs",
     "validate:trajectory-registry": "node scripts/run-ts-validator.mjs scripts/validate-trajectory-registry.ts",
     "validate:lod": "node scripts/run-ts-validator.mjs scripts/validate-screen-space-lod.ts",
+    "validate:local-precision-orbit": "node scripts/run-ts-validator.mjs scripts/validate-local-precision-orbit.ts",
+    "validate:focused-system-view": "node scripts/run-ts-validator.mjs scripts/validate-focused-system-view.ts",
     "validate:earth-craft-lod": "node scripts/run-ts-validator.mjs scripts/validate-earth-craft-lod.ts",
     "validate:scene-labels": "node scripts/run-ts-validator.mjs scripts/validate-scene-labels.ts",
     "validate:date-scrubber": "node scripts/run-ts-validator.mjs scripts/validate-date-scrubber.ts",
@@ -21,7 +23,7 @@
     "validate:mission-stories": "node scripts/run-ts-validator.mjs scripts/validate-mission-stories.ts",
     "validate:trajectory-semantics": "node scripts/run-ts-validator.mjs scripts/validate-trajectory-semantics.ts",
     "validate:ephemeris": "node scripts/run-ts-validator.mjs scripts/validate-ephemeris.ts",
-    "validate:data": "npm run validate:horizons && npm run validate:trajectory-registry && npm run validate:lod && npm run validate:earth-craft-lod && npm run validate:scene-labels && npm run validate:date-scrubber && npm run validate:ecliptic-deviation && npm run validate:kuiper-belt && npm run validate:mission-stories && npm run validate:trajectory-semantics && npm run validate:ephemeris",
+    "validate:data": "npm run validate:horizons && npm run validate:trajectory-registry && npm run validate:lod && npm run validate:local-precision-orbit && npm run validate:focused-system-view && npm run validate:earth-craft-lod && npm run validate:scene-labels && npm run validate:date-scrubber && npm run validate:ecliptic-deviation && npm run validate:kuiper-belt && npm run validate:mission-stories && npm run validate:trajectory-semantics && npm run validate:ephemeris",
     "validate:pages": "node scripts/validate-cloudflare-assets.mjs",
     "build:pages": "npm run build && npm run validate:pages",
     "verify": "npm run lint && npm run build:pages && npm run validate:data && npm run test:visual"

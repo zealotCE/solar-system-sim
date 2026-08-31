@@ -167,6 +167,17 @@ const SPACECRAFT_ARCHIVES: Record<string, ArchiveProfile> = {
       { zh: '运行于日地 L2 附近', en: 'OPERATES NEAR SUN–EARTH L2' },
     ],
   },
+  roman: {
+    objective: '以大视场近红外巡天测量宇宙加速膨胀、暗物质结构、系外行星人口与银河系时域变化。',
+    objectiveEn: 'Use wide-field near-infrared surveys to measure cosmic acceleration, dark-matter structure, exoplanet demographics, and the changing Milky Way.',
+    legacy: '罗曼把哈勃级分辨率与约百倍视场结合，并以开放巡天和日冕仪技术验证连接天体物理与未来系外行星直接成像。',
+    legacyEn: 'Roman combines Hubble-class resolution with a field roughly 100 times wider, linking open survey astronomy to future direct exoplanet imaging through its coronagraph demonstration.',
+    highlights: [
+      { zh: '2026 年 8 月 30 日成功发射', en: 'LAUNCHED SUCCESSFULLY ON 30 AUGUST 2026' },
+      { zh: '比原计划提前约九个月', en: 'LAUNCHED ABOUT NINE MONTHS AHEAD OF SCHEDULE' },
+      { zh: '2.4 米主镜与超大视场', en: '2.4-METRE MIRROR AND ULTRA-WIDE FIELD' },
+    ],
+  },
   juno: {
     objective: '测量木星内部结构、深层大气、极区、磁场和重力场，追溯巨行星形成。',
     objectiveEn: 'Measure Jupiter’s interior, deep atmosphere, poles, magnetic field, and gravity to reconstruct giant-planet formation.',

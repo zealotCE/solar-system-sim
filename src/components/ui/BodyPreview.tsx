@@ -394,19 +394,26 @@ function PreviewMinorBody({ body }: { body: MinorBodyData }) {
       spinRef.current.rotation.x = 0.18
     }
   })
+  const proceduralBody = (
+    <mesh scale={body.shapeScale}>
+      <dodecahedronGeometry args={[0.82, 3]} />
+      <meshStandardMaterial
+        color={body.color}
+        roughness={0.92}
+        metalness={body.id === 'psyche16' ? 0.28 : 0.03}
+      />
+    </mesh>
+  )
   return (
     <group scale={0.95} ref={spinRef}>
       {official ? (
-        <CraftGlbModel url={official.url} fitRadius={0.82} />
+        <CraftGlbModel
+          url={official.url}
+          fitRadius={0.82}
+          fallback={proceduralBody}
+        />
       ) : (
-        <mesh scale={body.shapeScale}>
-          <dodecahedronGeometry args={[0.82, 3]} />
-          <meshStandardMaterial
-            color={body.color}
-            roughness={0.92}
-            metalness={body.id === 'psyche16' ? 0.28 : 0.03}
-          />
-        </mesh>
+        proceduralBody
       )}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.78, 0]}>
         <ringGeometry args={[0.58, 0.6, 64]} />

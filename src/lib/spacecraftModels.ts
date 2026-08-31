@@ -35,6 +35,11 @@ export const CRAFT_MODELS: Record<string, CraftModelInfo> = {
   },
   parker: { url: '/models/parker.glb', credit: `${NASA_3D} · Parker Solar Probe`, creditUrl: NASA_3D_URL },
   jwst: { url: '/models/jwst.glb', credit: `${NASA_3D} · James Webb Space Telescope (B)`, creditUrl: NASA_3D_URL },
+  roman: {
+    url: '/models/roman.glb',
+    credit: `${NASA_3D} · Nancy Grace Roman Space Telescope (B)`,
+    creditUrl: 'https://science.nasa.gov/3d-resources/nancy-grace-roman-space-telescope-b/',
+  },
   juno: { url: '/models/juno.glb', credit: `${NASA_3D} · Juno (B)`, creditUrl: NASA_3D_URL },
   hubble: { url: '/models/hubble.glb', credit: `${NASA_3D} · Hubble Space Telescope (A)`, creditUrl: NASA_3D_URL },
   iss: { url: '/models/iss.glb', credit: `${NASA_3D} · ISS (B)`, creditUrl: NASA_3D_URL },

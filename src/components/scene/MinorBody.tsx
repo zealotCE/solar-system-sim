@@ -1,6 +1,6 @@
 import { Html } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 
 import {
@@ -14,20 +14,28 @@ import { getCraftLocatorTexture } from '@/lib/planetTextures'
 import {
   LABEL_FOCUSED_UPDATE_EPS,
   LABEL_IDLE_UPDATE_EPS,
+  createCenteredHtmlPosition,
   createContinuousHtmlPosition,
   createStableHtmlPosition,
+  selectBodyLocatorVisibility,
   selectDistanceDetailVisibility,
 } from '@/lib/sceneLabels'
+import { isVisualTestMode } from '@/lib/visualTest'
 import { CraftGlbModel } from './CraftGlbModel'
 
 const scratchPosition = new THREE.Vector3()
+const scratchLocatorPosition = new THREE.Vector3()
+const scratchLabelPosition = new THREE.Vector3()
 
 export function MinorBody({ body }: { body: MinorBodyData }) {
   const groupRef = useRef<THREE.Group>(null)
+  const labelAnchorRef = useRef<THREE.Group>(null)
   const meshRef = useRef<THREE.Mesh>(null)
   const hitRef = useRef<THREE.Mesh>(null)
   const locatorRef = useRef<THREE.Sprite>(null)
+  const labelRef = useRef<HTMLButtonElement>(null)
   const detailVisibleRef = useRef(false)
+  const locatorVisibleRef = useRef(false)
   const [detailVisible, setDetailVisible] = useState(false)
   const { size } = useThree()
   const {
@@ -38,10 +46,20 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
     showAllLabels,
     orbitScale,
     trueScale,
+    followPlanet,
     englishOnly,
   } = useSimulation()
   const locator = useMemo(() => getCraftLocatorTexture(), [])
   const officialModel = getMinorBodyModel(body.id)
+  const [officialModelState, setOfficialModelState] = useState<
+    'loading' | 'ready' | 'fallback'
+  >('loading')
+  const markOfficialModelReady = useCallback(() => {
+    setOfficialModelState('ready')
+  }, [])
+  const markOfficialModelFailed = useCallback(() => {
+    setOfficialModelState('fallback')
+  }, [])
   const selected = selectedPlanetId === body.id
   const radius = getMinorBodyVisualRadius(body, trueScale)
   const stableLabelPosition = useMemo(
@@ -52,9 +70,16 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
     () => createContinuousHtmlPosition(),
     [],
   )
-  const calculateLabelPosition = selected
-    ? continuousLabelPosition
-    : stableLabelPosition
+  const centeredLabelPosition = useMemo(
+    () => createCenteredHtmlPosition(),
+    [],
+  )
+  const anchoredLabel = selected && trueScale && followPlanet
+  const calculateLabelPosition = anchoredLabel
+    ? centeredLabelPosition
+    : selected
+      ? continuousLabelPosition
+      : stableLabelPosition
 
   useFrame(({ camera }) => {
     const group = groupRef.current
@@ -77,6 +102,10 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
     const distance = camera.position.distanceTo(scratchPosition)
     const worldPerPixel =
       (2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / size.height
+    const bodyDiameterPixels =
+      worldPerPixel > 0
+        ? (radius * 2 * Math.max(...body.shapeScale)) / worldPerPixel
+        : Number.POSITIVE_INFINITY
     const nearBody = selectDistanceDetailVisibility({
       distance,
       enterDistance: trueScale ? 0.08 : 14,
@@ -92,9 +121,35 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
       hitRef.current.scale.setScalar(Math.max(radius * 1.3, worldPerPixel * 14))
     }
     if (locatorRef.current) {
-      locatorRef.current.visible = nearBody
-      const markerSize = worldPerPixel * (selected ? 26 : 18)
+      const locatorVisible = selectBodyLocatorVisibility({
+        bodyDiameterPixels,
+        detailVisible: nearBody,
+        selected,
+        currentlyVisible: locatorVisibleRef.current,
+      })
+      locatorVisibleRef.current = locatorVisible
+      locatorRef.current.visible = locatorVisible
+      const markerSize = worldPerPixel * 18
       locatorRef.current.scale.set(markerSize, markerSize, 1)
+    }
+    if (labelRef.current && isVisualTestMode()) {
+      labelRef.current.dataset.locatorState = locatorVisibleRef.current
+        ? 'visible'
+        : 'hidden'
+      labelRef.current.dataset.bodyDiameterPixels =
+        bodyDiameterPixels.toPrecision(8)
+    }
+    if (selected && isVisualTestMode()) {
+      group.updateWorldMatrix(true, true)
+      group.getWorldPosition(scratchPosition)
+      locatorRef.current?.getWorldPosition(scratchLocatorPosition)
+      labelAnchorRef.current?.getWorldPosition(scratchLabelPosition)
+      document.documentElement.dataset.visualTestTargetWorld =
+        scratchPosition.toArray().join(',')
+      document.documentElement.dataset.visualTestLocatorWorld =
+        scratchLocatorPosition.toArray().join(',')
+      document.documentElement.dataset.visualTestLabelWorld =
+        scratchLabelPosition.toArray().join(',')
     }
   })
 
@@ -102,6 +157,18 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
     event.stopPropagation()
     selectPlanet(body.id)
   }
+  const proceduralBody = (
+    <mesh ref={meshRef} scale={body.shapeScale}>
+      <dodecahedronGeometry args={[radius, 2]} />
+      <meshStandardMaterial
+        color={body.color}
+        roughness={0.96}
+        metalness={body.id === 'psyche16' ? 0.34 : 0.04}
+        emissive={selected ? body.color : '#000000'}
+        emissiveIntensity={selected ? 0.12 : 0}
+      />
+    </mesh>
+  )
 
   return (
     <group ref={groupRef}>
@@ -135,19 +202,12 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
             fitRadius={trueScale ? undefined : radius}
             fitSpan={trueScale ? radius * 2 : undefined}
             identification
-            fallback={null}
+            fallback={proceduralBody}
+            onReady={markOfficialModelReady}
+            onError={markOfficialModelFailed}
           />
         ) : (
-          <mesh ref={meshRef} scale={body.shapeScale}>
-            <dodecahedronGeometry args={[radius, 2]} />
-            <meshStandardMaterial
-              color={body.color}
-              roughness={0.96}
-              metalness={body.id === 'psyche16' ? 0.34 : 0.04}
-              emissive={selected ? body.color : '#000000'}
-              emissiveIntensity={selected ? 0.12 : 0}
-            />
-          </mesh>
+          proceduralBody
         )}
       </group>
 
@@ -161,15 +221,15 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
       {trueScale ? (
         <sprite
           ref={locatorRef}
-          visible={selected || detailVisible}
+          visible={false}
           scale={[0, 0, 1]}
           renderOrder={20}
         >
           <spriteMaterial
             map={locator}
-            color={selected ? '#ffffff' : body.color}
+            color={body.color}
             transparent
-            opacity={selected ? 0.95 : 0.68}
+            opacity={0.68}
             depthTest={false}
             depthWrite={false}
             toneMapped={false}
@@ -178,20 +238,36 @@ export function MinorBody({ body }: { body: MinorBodyData }) {
       ) : null}
 
       {showLabels && (selected || detailVisible || showAllLabels) ? (
-        <Html
-          center
-          eps={selected ? LABEL_FOCUSED_UPDATE_EPS : LABEL_IDLE_UPDATE_EPS}
-          calculatePosition={calculateLabelPosition}
-          zIndexRange={[12, 0]}
-          style={{ pointerEvents: 'none' }}
+        <group
+          ref={labelAnchorRef}
           position={[0, trueScale ? 0 : radius + 0.28, 0]}
         >
-          <div className={`planet-label planet-label--minor ${selected ? 'planet-label-active' : ''}`}>
-            <span className="planet-label-dot" style={{ backgroundColor: body.color }} />
-            {englishOnly ? body.englishName : body.name}
-            {selected ? <span className="planet-label-code">{body.designation}</span> : null}
-          </div>
-        </Html>
+          <Html
+            center
+            eps={selected ? LABEL_FOCUSED_UPDATE_EPS : LABEL_IDLE_UPDATE_EPS}
+            calculatePosition={calculateLabelPosition}
+            zIndexRange={[12, 0]}
+            style={{ pointerEvents: 'none' }}
+          >
+            <button
+              ref={labelRef}
+              type="button"
+              className={`planet-label scene-label-hit planet-label--minor ${anchoredLabel ? 'planet-label--anchored' : ''} ${selected ? 'planet-label-active' : ''}`}
+              data-body-id={body.id}
+              data-model-state={
+                officialModel ? officialModelState : 'procedural'
+              }
+              onClick={(event) => {
+                event.stopPropagation()
+                selectPlanet(body.id)
+              }}
+            >
+              <span className="planet-label-dot" style={{ backgroundColor: body.color }} />
+              {englishOnly ? body.englishName : body.name}
+              {selected ? <span className="planet-label-code">{body.designation}</span> : null}
+            </button>
+          </Html>
+        </group>
       ) : null}
     </group>
   )

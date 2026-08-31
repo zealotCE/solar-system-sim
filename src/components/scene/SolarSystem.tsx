@@ -8,6 +8,7 @@ import * as THREE from 'three'
 import {
   PLANETS,
   findMoonById,
+  getMoonLocalOrbitRadius,
   getMoonVisualRadius,
   getMoonWorldPosition,
   getPlanetOrbitPoints,
@@ -54,11 +55,18 @@ import {
   getPrecisionRebaseEpoch,
   getTrueScaleCraftMinDistance,
 } from '@/lib/scenePrecision'
+import { getOrbitLineStyle } from '@/lib/trajectorySemantics'
+import {
+  getFocusedSystemExtent,
+  selectFocusedSystemView,
+} from '@/lib/focusedSystemView'
 import { SIM_TIME_MAX_YEARS, SIM_TIME_MIN_YEARS } from '@/lib/utils'
 import { isVisualTestMode } from '@/lib/visualTest'
 import { AsteroidBelt } from './AsteroidBelt'
+import { CraftModelAudit } from './CraftModelAudit'
 import { EclipticGrid } from './EclipticGrid'
 import { KuiperBelt } from './KuiperBelt'
+import { LocalPrecisionOrbit } from './LocalPrecisionOrbit'
 import { MinorBody } from './MinorBody'
 import { OrbitLine } from './OrbitLine'
 import { Planet } from './Planet'
@@ -377,9 +385,31 @@ function CameraRig() {
       pendingTrajectoryTarget.current = null
     }
     if (isVisualTestMode()) {
+      const visualWindow = window as typeof window & {
+        __solarVisualCameraDistance?: number
+      }
+      const requestedDistance = visualWindow.__solarVisualCameraDistance
+      if (Number.isFinite(requestedDistance)) {
+        offsetDir.current.copy(camera.position).sub(controls.target)
+        if (offsetDir.current.lengthSq() < 1e-24) {
+          offsetDir.current.set(0, 0, 1)
+        }
+        offsetDir.current
+          .normalize()
+          .multiplyScalar(
+            Math.max(requestedDistance ?? 0, controls.minDistance),
+          )
+        camera.position.copy(controls.target).add(offsetDir.current)
+        controls.update()
+        delete visualWindow.__solarVisualCameraDistance
+      }
       document.documentElement.dataset.visualTestCameraDistance = String(
         camera.position.distanceTo(controls.target),
       )
+      document.documentElement.dataset.visualTestCameraPosition =
+        camera.position.toArray().join(',')
+      document.documentElement.dataset.visualTestCameraTarget =
+        controls.target.toArray().join(',')
       document.documentElement.dataset.visualTestCameraMinDistance = String(
         controls.minDistance,
       )
@@ -433,8 +463,10 @@ function PlanetOrbit({ planet }: { planet: PlanetData }) {
     trueScale,
     selectedPlanetId,
     simTime,
+    simTimeRef,
     orbitEpoch,
   } = useSimulation()
+  const fullOrbitRef = useRef<THREE.Group>(null)
   const selected = selectedPlanetId === planet.id
   const rebaseEpoch = getPrecisionRebaseEpoch(
     simTime,
@@ -478,6 +510,8 @@ function PlanetOrbit({ planet }: { planet: PlanetData }) {
     forceMax: selected,
   })
   const segments = segmentTiers[tierIndex]
+  const semantic = planet.dwarf ? 'osculating' : 'reference'
+  const localLineStyle = getOrbitLineStyle(semantic, true)
 
   const orbit = useMemo(
     () => {
@@ -511,14 +545,34 @@ function PlanetOrbit({ planet }: { planet: PlanetData }) {
     ],
   )
   return (
-    <group position={orbit.anchor}>
-      <OrbitLine
-        customPoints={orbit.points}
-        color={planet.color}
-        active={selected}
-        semantic={planet.dwarf ? 'osculating' : 'reference'}
-      />
-    </group>
+    <>
+      <group ref={fullOrbitRef} position={orbit.anchor}>
+        <OrbitLine
+          customPoints={orbit.points}
+          color={planet.color}
+          active={selected}
+          semantic={semantic}
+        />
+      </group>
+      {selected && trueScale ? (
+        <LocalPrecisionOrbit
+          samplePosition={(time) =>
+            getPlanetPosition(planet, time, {
+              orbitScale,
+              eccentricityScale,
+              inclinationScale,
+              trueScale,
+            })
+          }
+          simTimeRef={simTimeRef}
+          orbitalPeriod={planet.orbitalPeriod}
+          orbitRadius={lodWorldError}
+          color={planet.color}
+          opacity={localLineStyle.opacity}
+          fullOrbitRef={fullOrbitRef}
+        />
+      ) : null}
+    </>
   )
 }
 
@@ -528,8 +582,10 @@ function MinorBodyOrbit({ body }: { body: MinorBodyData }) {
     trueScale,
     selectedPlanetId,
     simTime,
+    simTimeRef,
     orbitEpoch,
   } = useSimulation()
+  const fullOrbitRef = useRef<THREE.Group>(null)
   const selected = selectedPlanetId === body.id
   const rebaseEpoch = getPrecisionRebaseEpoch(
     simTime,
@@ -562,6 +618,7 @@ function MinorBodyOrbit({ body }: { body: MinorBodyData }) {
     forceMax: selected,
   })
   const segments = segmentTiers[tierIndex]
+  const localLineStyle = getOrbitLineStyle('osculating', true)
   const orbit = useMemo(
     () => {
       const anchor = getMinorBodyScenePosition(
@@ -584,14 +641,29 @@ function MinorBodyOrbit({ body }: { body: MinorBodyData }) {
     [body, orbitScale, trueScale, rebaseEpoch, segments],
   )
   return (
-    <group position={orbit.anchor}>
-      <OrbitLine
-        customPoints={orbit.points}
-        color={body.color}
-        active={selected}
-        semantic="osculating"
-      />
-    </group>
+    <>
+      <group ref={fullOrbitRef} position={orbit.anchor}>
+        <OrbitLine
+          customPoints={orbit.points}
+          color={body.color}
+          active={selected}
+          semantic="osculating"
+        />
+      </group>
+      {selected && trueScale ? (
+        <LocalPrecisionOrbit
+          samplePosition={(time) =>
+            getMinorBodyScenePosition(body, time, trueScale, orbitScale)
+          }
+          simTimeRef={simTimeRef}
+          orbitalPeriod={body.orbit.periodDays / 365.25}
+          orbitRadius={lodWorldError}
+          color={body.color}
+          opacity={localLineStyle.opacity}
+          fullOrbitRef={fullOrbitRef}
+        />
+      ) : null}
+    </>
   )
 }
 
@@ -604,17 +676,70 @@ function SceneContent() {
     bloomStrength,
     trueScale,
     selectedPlanetId,
+    followPlanet,
   } = useSimulation()
-  const { setDpr } = useThree()
+  const { setDpr, controls } = useThree()
   const overviewFrameRef = useRef(0)
+  const focusedSystemFrameRef = useRef(0)
   const wideOverviewRef = useRef(false)
+  const focusedSystemRef = useRef<string | null>(null)
   const viewDirectionRef = useRef(new THREE.Vector3())
   const rayClosestRef = useRef(new THREE.Vector3())
   const [wideOverview, setWideOverview] = useState(false)
+  const [focusedSystemId, setFocusedSystemId] = useState<string | null>(null)
   const lockVisualTestQuality = isVisualTestMode()
-  const visibleMinorBodyOrbits = wideOverview
+  const selectedSystem = useMemo(() => {
+    const selectedPlanet = PLANETS.find(
+      (planet) => planet.id === selectedPlanetId,
+    )
+    if (selectedPlanet) return selectedPlanet
+    return findMoonById(selectedPlanetId)?.parent ?? null
+  }, [selectedPlanetId])
+  const selectedSystemExtent = useMemo(
+    () =>
+      selectedSystem
+        ? getFocusedSystemExtent({
+            bodyRadius: getPlanetVisualRadius(selectedSystem, true),
+            satelliteOrbitRadii: selectedSystem.moons.map((moon) =>
+              getMoonLocalOrbitRadius(moon, selectedSystem, true),
+            ),
+          })
+        : 0,
+    [selectedSystem],
+  )
+  const visibleMinorBodyOrbits = focusedSystemId
+    ? []
+    : wideOverview
     ? MINOR_BODIES.filter((body) => body.id === selectedPlanetId)
     : MINOR_BODIES
+
+  useFrame(({ camera }) => {
+    focusedSystemFrameRef.current += 1
+    if (
+      focusedSystemFrameRef.current % SCREEN_SPACE_LOD_EVALUATION_FRAMES !==
+      0
+    ) {
+      return
+    }
+    const orbitControls = controls as OrbitControlsImpl | null
+    const canEnterLocalContext =
+      trueScale &&
+      followPlanet &&
+      selectedSystem &&
+      orbitControls?.target instanceof THREE.Vector3
+    const nextFocused =
+      canEnterLocalContext &&
+      selectFocusedSystemView({
+        cameraDistance: camera.position.distanceTo(orbitControls.target),
+        systemExtent: selectedSystemExtent,
+        currentlyFocused: focusedSystemRef.current === selectedSystem.id,
+      })
+        ? selectedSystem.id
+        : null
+    if (nextFocused === focusedSystemRef.current) return
+    focusedSystemRef.current = nextFocused
+    setFocusedSystemId(nextFocused)
+  })
 
   useFrame(({ camera }) => {
     if (lockVisualTestQuality) return
@@ -653,6 +778,14 @@ function SceneContent() {
     )
   }, [setDpr, wideOverview])
 
+  useEffect(() => {
+    if (!isVisualTestMode()) return
+    document.documentElement.dataset.visualTestFocusedSystem =
+      focusedSystemId ?? 'none'
+    document.documentElement.dataset.visualTestHeliocentricOrbits =
+      focusedSystemId ? 'hidden' : 'visible'
+  }, [focusedSystemId])
+
   return (
     <>
       <SimulationTicker />
@@ -664,11 +797,16 @@ function SceneContent() {
         far={trueScale ? 1600 : 900}
       />
       <CameraRig />
+      <CraftModelAudit />
       <SceneLights />
       <Starfield />
       <Sun />
       {showEcliptic ? <EclipticGrid /> : null}
-      {showOrbits ? PLANETS.map((planet) => <PlanetOrbit key={`${planet.id}-orbit`} planet={planet} />) : null}
+      {showOrbits && !focusedSystemId
+        ? PLANETS.map((planet) => (
+            <PlanetOrbit key={`${planet.id}-orbit`} planet={planet} />
+          ))
+        : null}
       {showAsteroids && showOrbits
         ? visibleMinorBodyOrbits.map((body) => (
             <MinorBodyOrbit key={`${body.id}-orbit`} body={body} />

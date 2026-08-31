@@ -8,6 +8,7 @@ import { useSimulation } from '@/hooks/useSimulation'
 import {
   LABEL_FOCUSED_UPDATE_EPS,
   LABEL_IDLE_UPDATE_EPS,
+  createCenteredHtmlPosition,
   createContinuousHtmlPosition,
   createStableHtmlPosition,
 } from '@/lib/sceneLabels'
@@ -37,6 +38,7 @@ export function Planet({ planet }: PlanetProps) {
     inclinationScale,
     usePhotoTextures,
     trueScale,
+    followPlanet,
     englishOnly,
   } = useSimulation()
   const { texture, isPhoto } = useBodySurface(
@@ -59,9 +61,16 @@ export function Planet({ planet }: PlanetProps) {
     () => createContinuousHtmlPosition(),
     [],
   )
-  const calculateLabelPosition = selected
-    ? continuousLabelPosition
-    : stableLabelPosition
+  const centeredLabelPosition = useMemo(
+    () => createCenteredHtmlPosition(),
+    [],
+  )
+  const anchoredLabel = selected && trueScale && followPlanet
+  const calculateLabelPosition = anchoredLabel
+    ? centeredLabelPosition
+    : selected
+      ? continuousLabelPosition
+      : stableLabelPosition
 
   useFrame(({ camera }) => {
     if (!groupRef.current || !meshRef.current || !visualRef.current) return
@@ -209,13 +218,29 @@ export function Planet({ planet }: PlanetProps) {
           calculatePosition={calculateLabelPosition}
           zIndexRange={[12, 0]}
           style={{ pointerEvents: 'none' }}
-          position={[0, trueScale ? radius * 2.4 : radius * planetScale + 0.58, 0]}
+          position={[
+            0,
+            trueScale
+              ? anchoredLabel
+                ? 0
+                : radius * 2.4
+              : radius * planetScale + 0.58,
+            0,
+          ]}
         >
-          <div className={`planet-label ${selected ? 'planet-label-active' : ''}`}>
+          <button
+            type="button"
+            className={`planet-label scene-label-hit ${anchoredLabel ? 'planet-label--anchored' : ''} ${selected ? 'planet-label-active' : ''}`}
+            data-body-id={planet.id}
+            onClick={(event) => {
+              event.stopPropagation()
+              selectPlanet(planet.id)
+            }}
+          >
             <span className="planet-label-dot" style={{ backgroundColor: planet.color }} />
             <span>{englishOnly ? planet.englishName : planet.name}</span>
             {selected ? <span className="planet-label-code">{planet.id.toUpperCase()}</span> : null}
-          </div>
+          </button>
         </Html>
       ) : null}
     </group>

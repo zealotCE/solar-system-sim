@@ -183,8 +183,8 @@ export function ParameterPanel({ compact = false }: { compact?: boolean }) {
             <span className="mt-0.5 block text-[10px] leading-relaxed text-slate-500">
               {trueScale
                 ? text(
-                    '严格同比例：实体与轨道共用同一 km 比例尺；远距航天器以 28–44 px 识别模型定位，继续放大后自动交还真实物理模型',
-                    'Strict physical scale for entities and orbits; a 28–44 px locator identifies distant craft, then hands off to the physical model as you zoom closer.',
+                    '严格同比例：实体与轨道共用同一 km 比例尺；远距识别层以 64–84 px 可辨主体为目标，并在近距连续收敛到真实物理模型',
+                    'Strict physical scale for entities and orbits; the locator targets a 64–84 px readable craft core and converges continuously into the physical model up close.',
                   )
                 : text(
                     '当前为艺术化比例：外侧轨道压缩、天体放大；航天器以固定屏幕尺寸准心识别，不叠加大面积辉光',

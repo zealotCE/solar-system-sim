@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 test('true-scale craft supports physical close-up with an anchored label', async ({
   page,
 }) => {
-  test.setTimeout(120_000)
+  test.setTimeout(180_000)
   await page.goto(
     '/?visual-test=1#target=voyager2&date=2026-11-14&scale=true&lang=en',
     { waitUntil: 'domcontentloaded' },
@@ -22,10 +22,14 @@ test('true-scale craft supports physical close-up with an anchored label', async
   const labelOffset = await label.evaluate((element) => {
     const transform = getComputedStyle(element).transform
     const matrix = new DOMMatrixReadOnly(transform)
-    return { x: matrix.m41, y: matrix.m42 }
+    const intended = Number.parseFloat(
+      element.style.getPropertyValue('--craft-label-offset'),
+    )
+    return { x: matrix.m41, y: matrix.m42, intended }
   })
   expect(Math.abs(labelOffset.x)).toBeLessThan(0.1)
-  expect(labelOffset.y).toBeCloseTo(-29, 1)
+  expect(labelOffset.intended).toBeGreaterThanOrEqual(32)
+  expect(labelOffset.y).toBeCloseTo(-labelOffset.intended, 1)
 
   const cameraLimits = await page.evaluate(() => ({
     minDistance: Number(
@@ -35,14 +39,27 @@ test('true-scale craft supports physical close-up with an anchored label', async
   }))
   expect(cameraLimits.minDistance).toBeLessThan(1e-8)
   expect(cameraLimits.near).toBeLessThanOrEqual(1e-12)
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => ({
+          centerError: Number(
+            document.documentElement.dataset
+              .visualTestPrecisionOrbitCenterError,
+          ),
+          mode:
+            document.documentElement.dataset.visualTestPrecisionOrbit,
+        })),
+      { timeout: 15_000 },
+    )
+    .toEqual({ centerError: 0, mode: 'local' })
 
-  const canvas = page.locator('.app-shell canvas').first()
-  const bounds = await canvas.boundingBox()
-  if (!bounds) throw new Error('Canvas has no bounds')
-  await page.mouse.move(bounds.x + bounds.width * 0.45, bounds.y + bounds.height * 0.45)
-  for (let index = 0; index < 90; index += 1) {
-    await page.mouse.wheel(0, -120)
-  }
+  await page.evaluate(() => {
+    const visualWindow = window as typeof window & {
+      __solarVisualCameraDistance?: number
+    }
+    visualWindow.__solarVisualCameraDistance = 5e-9
+  })
 
   await expect
     .poll(

@@ -8,6 +8,7 @@ import { getGlowTexture } from '@/lib/planetTextures'
 import {
   LABEL_FOCUSED_UPDATE_EPS,
   LABEL_IDLE_UPDATE_EPS,
+  createCenteredHtmlPosition,
   createContinuousHtmlPosition,
   createStableHtmlPosition,
 } from '@/lib/sceneLabels'
@@ -30,6 +31,7 @@ export function Sun() {
     bloomStrength,
     usePhotoTextures,
     trueScale,
+    followPlanet,
     englishOnly,
   } = useSimulation()
   const { texture, isPhoto } = useBodySurface(SUN.id, 'star', SUN.color, usePhotoTextures)
@@ -45,9 +47,16 @@ export function Sun() {
     () => createContinuousHtmlPosition(),
     [],
   )
-  const calculateLabelPosition = selected
-    ? continuousLabelPosition
-    : stableLabelPosition
+  const centeredLabelPosition = useMemo(
+    () => createCenteredHtmlPosition(),
+    [],
+  )
+  const anchoredLabel = selected && trueScale && followPlanet
+  const calculateLabelPosition = anchoredLabel
+    ? centeredLabelPosition
+    : selected
+      ? continuousLabelPosition
+      : stableLabelPosition
 
   useFrame(({ clock, camera }) => {
     if (!coreRef.current || !visualRef.current) return
@@ -191,13 +200,29 @@ export function Sun() {
           calculatePosition={calculateLabelPosition}
           zIndexRange={[12, 0]}
           style={{ pointerEvents: 'none' }}
-          position={[0, trueScale ? radius * 2.6 : radius * planetScale + 1, 0]}
+          position={[
+            0,
+            trueScale
+              ? anchoredLabel
+                ? 0
+                : radius * 2.6
+              : radius * planetScale + 1,
+            0,
+          ]}
         >
-          <div className={`planet-label sun-label ${selected ? 'planet-label-active' : ''}`}>
+          <button
+            type="button"
+            className={`planet-label scene-label-hit sun-label ${anchoredLabel ? 'planet-label--anchored' : ''} ${selected ? 'planet-label-active' : ''}`}
+            data-body-id={SUN.id}
+            onClick={(event) => {
+              event.stopPropagation()
+              selectPlanet(SUN.id)
+            }}
+          >
             <span className="planet-label-dot bg-amber-300" />
             {englishOnly ? SUN.englishName : SUN.name}
             {selected ? <span className="planet-label-code">G2V</span> : null}
-          </div>
+          </button>
         </Html>
       ) : null}
     </group>

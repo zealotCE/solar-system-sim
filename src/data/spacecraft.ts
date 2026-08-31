@@ -28,6 +28,7 @@ export type SpacecraftModelClass =
   | 'horizons-vector-trajectory'
   | 'simplified-keplerian-orbit'
   | 'fixed-l2-representation'
+  | 'representative-l2-transfer'
   | 'representative-local-orbit'
 
 /** Source and intentional limitations of the position model shown in the scene. */
@@ -88,6 +89,10 @@ export type SpacecraftData = {
   eccentricity?: number
   inclination?: number
   phase?: number
+  /** Representative cruise duration from launch to the Sun–Earth L2 region. */
+  l2TransferDays?: number
+  /** Representative quasi-halo radius around L2 in AU. */
+  l2HaloRadiusAu?: number
 }
 
 const EARTH = PLANETS.find((planet) => planet.id === 'earth')!
@@ -140,8 +145,8 @@ export const SPACECRAFT: SpacecraftData[] = [
     agency: 'NASA',
     launchDate: '1977-09-05',
     launchYear: 1977,
-    // 13 m magnetometer boom plus the ~4 m spacecraft body.
-    maxSpanM: 11,
+    // Same deployed bus/boom geometry as Voyager 2; bundled NASA model spans ~16.9 m.
+    maxSpanM: 17,
     status: '在役',
     kind: 'deep-probe',
     color: '#7dd3fc',
@@ -429,6 +434,40 @@ export const SPACECRAFT: SpacecraftData[] = [
       'An infrared flagship with a 6.5-metre gold-coated mirror operating near Sun–Earth L2. Webb studies the first galaxies, exoplanet atmospheres, and the birth of stars and planets.',
   },
   {
+    id: 'roman',
+    name: '南希·格蕾丝·罗曼空间望远镜',
+    englishName: 'Nancy Grace Roman Space Telescope',
+    shortCode: 'RST',
+    agency: 'NASA',
+    launchDate: '2026-08-30',
+    launchYear: 2026,
+    maxSpanM: 12.7,
+    status: '在役',
+    kind: 'telescope',
+    color: '#a5f3fc',
+    provenance: {
+      source: 'NASA Roman launch release and observatory technical overview',
+      sourceUrl:
+        'https://www.nasa.gov/news-release/nasas-dark-universe-seeking-nancy-grace-roman-space-telescope-launches/',
+      sourceEpoch: 'Launch confirmed 2026-08-30; representative 90-day L2 transfer',
+      frame: 'Earth-anchored Sun–Earth L2 transfer and quasi-halo representation',
+      modelClass: 'representative-l2-transfer',
+      caveat:
+        'Launch and destination are official. The displayed 90-day outbound path and L2 quasi-halo motion are representative geometry, not live navigation or reconstructed flight ephemerides.',
+    },
+    anchor: 'earth-l2',
+    l2TransferDays: 90,
+    l2HaloRadiusAu: 0.003,
+    orbitalPeriod: 0.5,
+    phase: 2.25,
+    orbitNote: '约三个月日地 L2 转移 / 准晕轨道',
+    orbitNoteEn: 'THREE-MONTH SUN–EARTH L2 TRANSFER / QUASI-HALO ORBIT',
+    description:
+      '2026 年 8 月 30 日，罗曼望远镜在整星提前完工后由猎鹰重型火箭成功发射，开始约三个月的日地 L2 转移。它以 2.4 米主镜配合百倍于哈勃的视场普查暗能量、暗物质与系外行星，并搭载日冕仪技术验证设备。',
+    descriptionEn:
+      'Roman launched successfully on Falcon Heavy on 30 August 2026 after the observatory finished ahead of schedule, beginning a roughly three-month journey to Sun–Earth L2. Its 2.4-metre mirror, Hubble-class resolution, roughly 100-times-wider field, and coronagraph demonstration will survey dark energy, dark matter, and exoplanets.',
+  },
+  {
     id: 'juno',
     name: '朱诺号',
     englishName: 'Juno',
@@ -573,10 +612,68 @@ export function getSpacecraftById(id: string | null): SpacecraftData | null {
   return SPACECRAFT.find((craft) => craft.id === id) ?? null
 }
 
+function getCraftLaunchJd(craft: SpacecraftData): number {
+  return (
+    Date.parse(`${craft.launchDate}T00:00:00Z`) / MS_PER_DAY +
+    UNIX_EPOCH_JD
+  )
+}
+
 /** Whether the craft physically exists at the current model time. */
 export function isCraftLaunched(craft: SpacecraftData, simTime: number): boolean {
-  const launchJd = Date.parse(`${craft.launchDate}T00:00:00Z`) / MS_PER_DAY + UNIX_EPOCH_JD
-  return simTimeToJd(simTime) >= launchJd
+  return simTimeToJd(simTime) >= getCraftLaunchJd(craft)
+}
+
+export type EarthL2TransferState = {
+  transferProgress: number
+  pathProgress: number
+  radialAu: number
+  tangentialAu: number
+  verticalAu: number
+  distanceAu: number
+}
+
+/**
+ * Representative Earth-to-L2 geometry. Missions without an explicit transfer
+ * retain the legacy fixed 0.01 AU placement; Roman progresses outward for the
+ * official three-month cruise before entering a distinct quasi-halo slot.
+ */
+export function getEarthL2TransferState(
+  craft: SpacecraftData,
+  simTime: number,
+): EarthL2TransferState {
+  const transferDays = Math.max(0, craft.l2TransferDays ?? 0)
+  const elapsedDays = simTimeToJd(simTime) - getCraftLaunchJd(craft)
+  const transferProgress =
+    transferDays > 0
+      ? Math.min(1, Math.max(0, elapsedDays / transferDays))
+      : 1
+  const pathProgress = 1 - Math.pow(1 - transferProgress, 1.15)
+  const initialOffsetAu = 0.00005
+  const radialAu =
+    initialOffsetAu + (0.01 - initialOffsetAu) * pathProgress
+  const haloRadiusAu = Math.max(0, craft.l2HaloRadiusAu ?? 0)
+  const haloRamp =
+    transferProgress *
+    transferProgress *
+    (3 - 2 * transferProgress)
+  const yearsSinceLaunch = Math.max(0, elapsedDays) / 365.25
+  const haloPhase =
+    (craft.phase ?? 0) +
+    (Math.PI * 2 * yearsSinceLaunch) /
+      Math.max(craft.orbitalPeriod ?? 0.5, 1 / 365.25)
+  const tangentialAu =
+    Math.cos(haloPhase) * haloRadiusAu * haloRamp
+  const verticalAu =
+    Math.sin(haloPhase) * haloRadiusAu * haloRamp * 0.65
+  return {
+    transferProgress,
+    pathProgress,
+    radialAu,
+    tangentialAu,
+    verticalAu,
+    distanceAu: Math.hypot(radialAu, tangentialAu, verticalAu),
+  }
 }
 
 /** Physical scene visibility, including destruction or surface-impact dates. */
@@ -1189,9 +1286,30 @@ export function getSpacecraftPlacement(
       modifiers,
     )
     const length = Math.hypot(ex, ez) || 1
-    const offset = trueScale ? 0.01 * AU_UNITS : 1.05 * localScale
-    const lift = trueScale ? 0.0002 : 0.14
-    return { anchor: [ex, ey, ez], local: [(ex / length) * offset, lift, (ez / length) * offset] }
+    const radialX = ex / length
+    const radialZ = ez / length
+    const state = getEarthL2TransferState(craft, simTime)
+    const radial = trueScale
+      ? state.radialAu * AU_UNITS
+      : (0.55 + state.pathProgress * 0.5) * localScale
+    const haloScale = trueScale
+      ? AU_UNITS
+      : (0.18 * localScale) / Math.max(craft.l2HaloRadiusAu ?? 0.003, 1e-9)
+    const tangential = state.tangentialAu * haloScale
+    const fixedLift =
+      (craft.l2HaloRadiusAu ?? 0) > 0 ? 0 : trueScale ? 0.0002 : 0.14
+    const vertical =
+      (trueScale
+        ? state.verticalAu * AU_UNITS
+        : state.verticalAu * haloScale) + fixedLift
+    return {
+      anchor: [ex, ey, ez],
+      local: [
+        radialX * radial - radialZ * tangential,
+        vertical,
+        radialZ * radial + radialX * tangential,
+      ],
+    }
   }
 
   const local = getSimplifiedCraftLocalPosition(
@@ -1296,7 +1414,18 @@ export function getCraftHeliocentricAu(
   if (craft.anchor === 'earth-l2') {
     const [ex, ey, ez] = getPlanetHeliocentricAu('earth', simTime)
     const length = Math.hypot(ex, ey) || 1
-    return [ex + (ex / length) * 0.01, ey + (ey / length) * 0.01, ez]
+    const radialX = ex / length
+    const radialY = ey / length
+    const state = getEarthL2TransferState(craft, simTime)
+    return [
+      ex +
+        radialX * state.radialAu -
+        radialY * state.tangentialAu,
+      ey +
+        radialY * state.radialAu +
+        radialX * state.tangentialAu,
+      ez + state.verticalAu,
+    ]
   }
   const anchorId = craft.anchor === 'jupiter' ? 'jupiter' : 'earth'
   const [px, py, pz] = getPlanetHeliocentricAu(anchorId, simTime)
@@ -1363,9 +1492,26 @@ export function getCraftStats(
   }
 
   if (craft.anchor === 'earth-l2') {
+    const l2State = getEarthL2TransferState(craft, simTime)
+    const inTransfer = l2State.transferProgress < 1
+    const distance =
+      inTransfer
+        ? `${englishOnly ? 'L2 TRANSFER' : 'L2 转移'} · ${Math.round(
+            l2State.distanceAu * KM_PER_AU,
+          ).toLocaleString('en-US')} km`
+        : `${englishOnly ? 'SUN–EARTH L2' : '日地 L2'} · ${l2State.distanceAu.toFixed(3)} AU`
+    const lightSeconds = l2State.distanceAu * 499
+    const signal =
+      lightSeconds < 1
+        ? englishOnly
+          ? '< 1 SECOND'
+          : '< 1 秒'
+        : englishOnly
+          ? `≈ ${lightSeconds.toFixed(lightSeconds < 10 ? 1 : 0)} SECONDS`
+          : `≈ ${lightSeconds.toFixed(lightSeconds < 10 ? 1 : 0)} 秒`
     return {
-      distance: englishOnly ? 'SUN–EARTH L2 · 0.01 AU' : '日地 L2 · 0.01 AU',
-      signal: englishOnly ? '≈ 5 SECONDS' : '≈ 5 秒',
+      distance,
+      signal,
       age: ageLabel,
       velocity,
     }

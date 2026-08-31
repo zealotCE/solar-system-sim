@@ -427,12 +427,14 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
           'horizons-vector-trajectory': 'JPL HORIZONS STATE VECTORS · HERMITE INTERPOLATION',
           'simplified-keplerian-orbit': 'SIMPLIFIED KEPLERIAN ORBIT',
           'fixed-l2-representation': 'FIXED L2 REPRESENTATION',
+          'representative-l2-transfer': 'REPRESENTATIVE L2 TRANSFER / QUASI-HALO',
           'representative-local-orbit': 'REPRESENTATIVE LOCAL ORBIT',
         }[provenance.modelClass]
       : {
           'horizons-vector-trajectory': 'JPL Horizons 状态矢量 · Hermite 插值',
           'simplified-keplerian-orbit': '简化开普勒轨道（示意）',
           'fixed-l2-representation': 'L2 固定位置（示意）',
+          'representative-l2-transfer': 'L2 转移 / 准晕轨道（示意）',
           'representative-local-orbit': '代表性近地轨道（示意）',
         }[provenance.modelClass]
     : null
@@ -782,8 +784,8 @@ export function PlanetInfo({ compact = false }: PlanetInfoProps) {
       {craft && trueScale ? (
         <p className="rounded-xl border border-cyan-200/10 bg-cyan-300/[0.035] px-3 py-2 text-[10px] leading-relaxed text-cyan-100/65">
           {pureChinese
-            ? `真实比例：物理实体最长展开跨度约 ${craft.maxSpanM} m；远距时由 28–44 px 非物理识别模型定位，继续向内缩放后识别层会自动隐藏并显示真实物理模型。`
-            : `TRUE SCALE · physical span ≈ ${craft.maxSpanM} m. A 28–44 px non-physical locator is used at distance, then retires automatically as the physical model becomes inspectable.`}
+            ? `真实比例：物理实体最长展开跨度约 ${craft.maxSpanM} m；远距识别层按模型可辨主体而非最长天线缩放，主体目标为 64–84 px，继续向内缩放后会平滑交给真实物理模型。`
+            : `TRUE SCALE · physical span ≈ ${craft.maxSpanM} m. The distant locator scales its readable core—not its longest antenna—to a 64–84 px target, then converges smoothly into the physical model.`}
         </p>
       ) : null}
 

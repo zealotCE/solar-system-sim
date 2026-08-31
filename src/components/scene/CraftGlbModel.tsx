@@ -1,6 +1,17 @@
 import { useGLTF } from '@react-three/drei'
-import { Component, Suspense, useMemo, type ReactNode } from 'react'
+import {
+  Component,
+  Suspense,
+  useEffect,
+  useMemo,
+  type ReactNode,
+} from 'react'
 import * as THREE from 'three'
+
+import {
+  measureModelPresentation,
+  type ModelPresentationMetrics,
+} from '@/lib/modelPresentation'
 
 type CraftGlbModelProps = {
   url: string
@@ -8,12 +19,22 @@ type CraftGlbModelProps = {
   fitRadius?: number
   /** Target longest deployed span in scene units (physical scene rendering). */
   fitSpan?: number
+  /** Target robust visual-core radius, discounting long thin appendages. */
+  fitCoreRadius?: number
+  /** Align the readable spacecraft body, rather than its full bounding box. */
+  centerOnVisualCore?: boolean
   /** Apply bounded studio lighting to a non-physical identification model. */
   identification?: boolean
   /** Optional alpha used only by an explicitly screen-space identification layer. */
   identificationOpacity?: number
   /** Rendered while loading and if the model fails to load. */
   fallback?: ReactNode
+  /** Called after the normalized GLB has committed to the scene. */
+  onReady?: () => void
+  /** Reports source-model proportions used by screen/physical hand-off logic. */
+  onMetrics?: (metrics: ModelPresentationMetrics) => void
+  /** Called if loading or normalizing the GLB fails. */
+  onError?: () => void
 }
 
 function createIdentificationMatcap(): THREE.DataTexture {
@@ -88,17 +109,26 @@ function NormalizedGltf({
   url,
   fitRadius,
   fitSpan,
+  fitCoreRadius,
+  centerOnVisualCore,
   identification,
   identificationOpacity,
+  onReady,
+  onMetrics,
 }: {
   url: string
   fitRadius?: number
   fitSpan?: number
+  fitCoreRadius?: number
+  centerOnVisualCore?: boolean
   identification?: boolean
   identificationOpacity?: number
+  onReady?: () => void
+  onMetrics?: (metrics: ModelPresentationMetrics) => void
 }) {
   const { scene } = useGLTF(url)
   const normalized = useMemo(() => {
+    const metrics = measureModelPresentation(scene)
     const clone = scene.clone(true)
     // glTF clones share materials by default. Clone them before neutralizing
     // emissive channels so the official models react to scene/studio lighting
@@ -129,29 +159,44 @@ function NormalizedGltf({
         : neutralize(object.material)
     })
 
-    const box = new THREE.Box3().setFromObject(clone)
-    const sphere = box.getBoundingSphere(new THREE.Sphere())
-    clone.position.sub(sphere.center)
-    const size = box.getSize(new THREE.Vector3())
-    const longestSpan = Math.max(size.x, size.y, size.z)
+    const center = centerOnVisualCore
+      ? metrics.coreCenter
+      : metrics.boundsCenter
+    clone.position.sub(new THREE.Vector3(...center))
     const pivot = new THREE.Group()
     pivot.add(clone)
-    const scale =
+    const requestedScale =
       fitSpan !== undefined
-        ? longestSpan > 0
-          ? fitSpan / longestSpan
+        ? metrics.longestSpan > 0
+          ? fitSpan / metrics.longestSpan
           : 1
-        : sphere.radius > 0
-          ? (fitRadius ?? 1) / sphere.radius
-          : 1
-    pivot.scale.setScalar(scale)
-    return pivot
-  }, [scene, fitRadius, fitSpan, identification, identificationOpacity])
-  return <primitive object={normalized} />
+        : fitCoreRadius !== undefined
+          ? metrics.coreRadius > 0
+            ? fitCoreRadius / metrics.coreRadius
+            : 1
+          : metrics.boundsRadius > 0
+            ? (fitRadius ?? 1) / metrics.boundsRadius
+            : 1
+    pivot.scale.setScalar(requestedScale)
+    return { object: pivot, metrics }
+  }, [
+    scene,
+    fitRadius,
+    fitSpan,
+    fitCoreRadius,
+    centerOnVisualCore,
+    identification,
+    identificationOpacity,
+  ])
+  useEffect(() => {
+    onMetrics?.(normalized.metrics)
+    onReady?.()
+  }, [normalized, onMetrics, onReady])
+  return <primitive object={normalized.object} />
 }
 
 class GlbErrorBoundary extends Component<
-  { fallback: ReactNode; children: ReactNode },
+  { fallback: ReactNode; children: ReactNode; onError?: () => void },
   { failed: boolean }
 > {
   state = { failed: false }
@@ -162,6 +207,7 @@ class GlbErrorBoundary extends Component<
 
   componentDidCatch(error: Error) {
     console.warn('Official craft model failed to load, using procedural fallback', error)
+    this.props.onError?.()
   }
 
   render() {
@@ -178,19 +224,28 @@ export function CraftGlbModel({
   url,
   fitRadius,
   fitSpan,
+  fitCoreRadius,
+  centerOnVisualCore = false,
   identification = false,
   identificationOpacity,
   fallback = null,
+  onReady,
+  onMetrics,
+  onError,
 }: CraftGlbModelProps) {
   return (
-    <GlbErrorBoundary fallback={fallback}>
+    <GlbErrorBoundary key={url} fallback={fallback} onError={onError}>
       <Suspense fallback={fallback}>
         <NormalizedGltf
           url={url}
           fitRadius={fitRadius}
           fitSpan={fitSpan}
+          fitCoreRadius={fitCoreRadius}
+          centerOnVisualCore={centerOnVisualCore}
           identification={identification}
           identificationOpacity={identificationOpacity}
+          onReady={onReady}
+          onMetrics={onMetrics}
         />
       </Suspense>
     </GlbErrorBoundary>

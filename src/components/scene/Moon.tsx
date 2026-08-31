@@ -16,11 +16,14 @@ import { MOON_ORBIT_MAX_SEGMENTS } from '@/lib/screenSpaceLod'
 import {
   LABEL_FOCUSED_UPDATE_EPS,
   LABEL_IDLE_UPDATE_EPS,
+  createCenteredHtmlPosition,
   createContinuousHtmlPosition,
   createStableHtmlPosition,
   selectDistanceDetailVisibility,
 } from '@/lib/sceneLabels'
+import { getOrbitLineStyle } from '@/lib/trajectorySemantics'
 import { useBodySurface } from '@/lib/textureAssets'
+import { LocalPrecisionOrbit } from './LocalPrecisionOrbit'
 import { OrbitLine } from './OrbitLine'
 
 type MoonProps = {
@@ -32,6 +35,7 @@ const scratchWorld = new THREE.Vector3()
 
 export function Moon({ moon, parent }: MoonProps) {
   const groupRef = useRef<THREE.Group>(null)
+  const fullOrbitRef = useRef<THREE.Group>(null)
   const visualRef = useRef<THREE.Group>(null)
   const meshRef = useRef<THREE.Mesh>(null)
   const hitRef = useRef<THREE.Mesh>(null)
@@ -50,6 +54,7 @@ export function Moon({ moon, parent }: MoonProps) {
     inclinationScale,
     usePhotoTextures,
     trueScale,
+    followPlanet,
     englishOnly,
   } = useSimulation()
   const { texture, isPhoto } = useBodySurface(
@@ -62,6 +67,7 @@ export function Moon({ moon, parent }: MoonProps) {
   const radius = getMoonVisualRadius(moon, trueScale)
   const parentRadius = getPlanetVisualRadius(parent, trueScale)
   const orbitLineRadius = getMoonLocalOrbitRadius(moon, parent, trueScale)
+  const localLineStyle = getOrbitLineStyle('osculating', true)
   const stableLabelPosition = useMemo(
     () => createStableHtmlPosition(),
     [],
@@ -70,9 +76,16 @@ export function Moon({ moon, parent }: MoonProps) {
     () => createContinuousHtmlPosition(),
     [],
   )
-  const calculateLabelPosition = selected
-    ? continuousLabelPosition
-    : stableLabelPosition
+  const centeredLabelPosition = useMemo(
+    () => createCenteredHtmlPosition(),
+    [],
+  )
+  const anchoredLabel = selected && trueScale && followPlanet
+  const calculateLabelPosition = anchoredLabel
+    ? centeredLabelPosition
+    : selected
+      ? continuousLabelPosition
+      : stableLabelPosition
   // Reveal distance for the label (and, in true scale, the pixel hit sphere):
   // roughly "the camera is inspecting this planet system".
   const labelDistance = trueScale
@@ -124,15 +137,36 @@ export function Moon({ moon, parent }: MoonProps) {
   return (
     <group>
       {showOrbits && (selected || detailVisible) ? (
-        <OrbitLine
-          orbitRadius={orbitLineRadius}
-          eccentricity={(moon.eccentricity ?? 0) * (trueScale ? 1 : eccentricityScale)}
-          inclination={(moon.inclination ?? 0) * (trueScale ? 1 : inclinationScale)}
-          color={moon.color}
-          active={selected}
-          lodMaxSegments={MOON_ORBIT_MAX_SEGMENTS}
-          semantic="osculating"
-        />
+        <>
+          <group ref={fullOrbitRef}>
+            <OrbitLine
+              orbitRadius={orbitLineRadius}
+              eccentricity={(moon.eccentricity ?? 0) * (trueScale ? 1 : eccentricityScale)}
+              inclination={(moon.inclination ?? 0) * (trueScale ? 1 : inclinationScale)}
+              color={moon.color}
+              active={selected}
+              lodMaxSegments={MOON_ORBIT_MAX_SEGMENTS}
+              semantic="osculating"
+            />
+          </group>
+          {selected && trueScale ? (
+            <LocalPrecisionOrbit
+              samplePosition={(time) =>
+                getMoonLocalPosition(moon, parent, time, {
+                  eccentricityScale,
+                  inclinationScale,
+                  trueScale,
+                })
+              }
+              simTimeRef={simTimeRef}
+              orbitalPeriod={Math.abs(moon.orbitalPeriod)}
+              orbitRadius={orbitLineRadius}
+              color={moon.color}
+              opacity={localLineStyle.opacity}
+              fullOrbitRef={fullOrbitRef}
+            />
+          ) : null}
+        </>
       ) : null}
 
       <group ref={groupRef}>
@@ -198,14 +232,28 @@ export function Moon({ moon, parent }: MoonProps) {
             calculatePosition={calculateLabelPosition}
             zIndexRange={[12, 0]}
             style={{ pointerEvents: 'none' }}
-            position={[0, trueScale ? radius * 2.2 : radius * planetScale + 0.16, 0]}
+            position={[
+              0,
+              trueScale
+                ? anchoredLabel
+                  ? 0
+                  : radius * 2.2
+                : radius * planetScale + 0.16,
+              0,
+            ]}
           >
-            <div
-              className={`planet-label planet-label--minor ${selected ? 'planet-label-active' : ''}`}
+            <button
+              type="button"
+              className={`planet-label scene-label-hit planet-label--minor ${anchoredLabel ? 'planet-label--anchored' : ''} ${selected ? 'planet-label-active' : ''}`}
+              data-body-id={moon.id}
+              onClick={(event) => {
+                event.stopPropagation()
+                selectPlanet(moon.id)
+              }}
             >
               <span className="planet-label-dot" style={{ backgroundColor: moon.color }} />
               {englishOnly ? moon.englishName : moon.name}
-            </div>
+            </button>
           </Html>
         ) : null}
       </group>
