@@ -4,11 +4,16 @@ import { getSpacecraftById } from '@/data/spacecraft'
 import { TARGET_SEQUENCE } from '@/data/targets'
 import { ensureTrajectory } from '@/data/trajectoryRegistry'
 import { useSimulation } from '@/hooks/useSimulation'
+import {
+  getArchiveRouteEntry,
+  getArchiveRouteEntryFromPath,
+} from '@/lib/archiveRoutes'
 import { dateInputToSimTime, simTimeToDateInput } from '@/lib/utils'
 
 /**
  * NASA Eyes-style shareable deep links:
  *   #target=jupiter&date=1986-01-24&scale=true&lang=en
+ *   /objects/jupiter#date=1986-01-24&scale=true&lang=en
  * Applied once on load; kept up to date with replaceState (no history spam).
  * The date part is only written while paused so playback does not churn the URL.
  */
@@ -25,12 +30,15 @@ export function DeepLink() {
     languageMode,
   } = useSimulation()
   const applied = useRef(false)
+  const archivePathMode = useRef(false)
   const lastWritten = useRef<string | null>(null)
 
   useEffect(() => {
     if (applied.current) return
     applied.current = true
     const params = new URLSearchParams(window.location.hash.slice(1))
+    const routeEntry = getArchiveRouteEntryFromPath(window.location.pathname)
+    archivePathMode.current = routeEntry !== null
     const date = params.get('date')
     if (date) {
       const nextTime = dateInputToSimTime(date)
@@ -41,7 +49,7 @@ export function DeepLink() {
     if (language === 'zh' || language === 'en' || language === 'bilingual') {
       setLanguageMode(language)
     }
-    const target = params.get('target')
+    const target = params.get('target') ?? routeEntry?.id
     if (target && TARGET_SEQUENCE.includes(target)) {
       const craft = getSpacecraftById(target)
       if (craft?.trajectoryId) {
@@ -59,10 +67,55 @@ export function DeepLink() {
     if (languageMode !== 'bilingual') parts.push(`lang=${languageMode}`)
     if (!isPlaying) parts.push(`date=${simTimeToDateInput(simTime)}`)
     const hash = parts.length ? `#${parts.join('&')}` : ''
-    if (hash === lastWritten.current) return
-    lastWritten.current = hash
-    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
+    const routeEntry = getArchiveRouteEntry(selectedPlanetId)
+    const pathname = archivePathMode.current
+      ? (routeEntry?.path ?? '/')
+      : window.location.pathname
+    const nextUrl = `${pathname}${window.location.search}${hash}`
+    if (nextUrl === lastWritten.current) return
+    lastWritten.current = nextUrl
+    history.replaceState(null, '', nextUrl)
   }, [selectedPlanetId, trueScale, isPlaying, simTime, languageMode])
+
+  useEffect(() => {
+    if (!archivePathMode.current) return
+    const routeEntry = getArchiveRouteEntry(selectedPlanetId)
+    let canonical = document.querySelector<HTMLLinkElement>(
+      'link[data-archive-canonical]',
+    )
+    if (!canonical) {
+      canonical = document.createElement('link')
+      canonical.dataset.archiveCanonical = ''
+      canonical.rel = 'canonical'
+      document.head.append(canonical)
+    }
+    const description = document.querySelector<HTMLMetaElement>(
+      'meta[name="description"]',
+    )
+
+    if (!routeEntry) {
+      document.title =
+        languageMode === 'en'
+          ? 'Solar System Observatory'
+          : '太阳系动态观测台 · Solar System Observatory'
+      if (canonical) canonical.href = '/'
+      return
+    }
+
+    document.title =
+      languageMode === 'en'
+        ? `${routeEntry.englishName} | Solar System Observatory`
+        : languageMode === 'zh'
+          ? `${routeEntry.name} | 太阳系动态观测台`
+          : `${routeEntry.name} · ${routeEntry.englishName} | 太阳系动态观测台`
+    if (description) {
+      description.content =
+        languageMode === 'en'
+          ? routeEntry.descriptionEn
+          : routeEntry.description
+    }
+    if (canonical) canonical.href = routeEntry.path
+  }, [languageMode, selectedPlanetId])
 
   return null
 }

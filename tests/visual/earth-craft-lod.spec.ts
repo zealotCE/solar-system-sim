@@ -1,4 +1,21 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+const CLUSTER_TIMEOUT_MS = 60_000
+
+async function waitForEarthCraftCluster(page: Page) {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() =>
+          Boolean(document.querySelector('.earth-craft-cluster')),
+        ),
+      { timeout: CLUSTER_TIMEOUT_MS },
+    )
+    .toBe(true)
+  await expect(page.locator('.earth-craft-cluster')).toBeVisible({
+    timeout: CLUSTER_TIMEOUT_MS,
+  })
+}
 
 test.describe('near-Earth spacecraft LOD', () => {
   test('English mission names stay inside the adaptive cluster', async ({
@@ -9,7 +26,7 @@ test.describe('near-Earth spacecraft LOD', () => {
     })
 
     const cluster = page.locator('.earth-craft-cluster')
-    await expect(cluster).toBeVisible()
+    await waitForEarthCraftCluster(page)
     const names = cluster.locator('.earth-craft-cluster__name')
     await expect(names).toHaveCount(5)
     expect((await names.allTextContents()).sort()).toEqual([
@@ -52,7 +69,7 @@ test.describe('near-Earth spacecraft LOD', () => {
     })
 
     const cluster = page.locator('.earth-craft-cluster')
-    await expect(cluster).toBeVisible()
+    await waitForEarthCraftCluster(page)
     await expect(page.locator('.planet-label')).toHaveCount(10)
     await expect(page.locator('.planet-label--minor')).toHaveCount(0)
     await expect(page.locator('.craft-label')).toHaveCount(0)
@@ -108,7 +125,7 @@ test.describe('near-Earth spacecraft LOD', () => {
     await page.goto('/?visual-test=1&case=roman#date=2026-08-31', {
       waitUntil: 'domcontentloaded',
     })
-    await expect(cluster).toBeVisible()
+    await waitForEarthCraftCluster(page)
     await cluster.locator('[data-craft-id="iss"]').click()
     await expect(cluster).toBeHidden()
     await expect(
@@ -123,7 +140,7 @@ test.describe('near-Earth spacecraft LOD', () => {
       waitUntil: 'domcontentloaded',
     })
     const cluster = page.locator('.earth-craft-cluster')
-    await expect(cluster).toBeVisible()
+    await waitForEarthCraftCluster(page)
     await expect(cluster.locator('[data-craft-id="roman"]')).toHaveCount(0)
   })
 
@@ -133,6 +150,7 @@ test.describe('near-Earth spacecraft LOD', () => {
     await page.goto('/?visual-test=1#date=2026-08-31', {
       waitUntil: 'domcontentloaded',
     })
+    await waitForEarthCraftCluster(page)
     const romanTarget = page.locator(
       '.earth-craft-cluster [data-craft-id="roman"]',
     )

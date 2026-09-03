@@ -36,7 +36,7 @@
 - **小天体与彗星**：谷神星、灶神星、贝努、67P、哈雷彗星、欧律巴忒斯、灵神星、阿波菲斯和阿罗科斯均采用 JPL SBDB 离线轨道根数，具备真实空间方位、轨道、搜索、实时光时和扩展科学档案
 - **目标搜索**：目标列表支持中英文模糊搜索，桌面端按 `/` 直达
 - **实时读数**：档案面板按当前模型时刻实时计算距太阳/距地球（AU + km）与单向光时（NASA Eyes 风格）
-- **URL 深链**：`#target=jupiter&date=1986-01-24&scale=true&lang=en` 直接分享目标、日期、比例和语言
+- **可索引档案路径与深链**：构建时为全部 65 个目标生成 `/objects/<id>` 或 `/missions/<id>` 独立 HTML，包含标题、摘要、canonical、Open Graph、JSON-LD 和无脚本档案正文；路径负责目标，Hash 继续组合日期、比例和语言，例如 `/objects/earth#date=2028-04-15`、`/missions/newhorizons#date=2028-04-15`。原有 `#target=jupiter&date=1986-01-24&scale=true&lang=en` 完全兼容
 - 基于 NASA 测绘数据的真实行星贴图（2K），含地球云层与土星环实拍条带；离线时自动回退到程序化贴图
 - 4K 真实银河全景天幕（ESO，按银道面真实倾角摆放）叠加程序化星野；背景启用深度遮挡，不会穿透太阳或天体表面
 - 太阳、八大行星、冥王星与 26 颗天然卫星：月球、火卫一/二、木卫一至五、土卫一/二/三/四/五/六/八、天卫一/二/三/四/五、海卫一（逆行）/八、冥卫一至五
@@ -108,7 +108,7 @@ Cloudflare Pages 的 Git 集成设置：
 - Root directory：留空
 - Node.js：仓库 `.node-version` 固定为 `22`
 
-Cloudflare 会自动读取 `wrangler.jsonc` 中的 `pages_build_output_dir: "./dist"`。如果日志显示 `/bin/sh: pm: not found`，说明构建命令漏写了开头的 `n`，应改回完整的 `npm run build:pages`。`public/_headers` 会让带哈希的 Vite 资源和 `/ephemerides/<mission>-<hash>.json` 使用一年 immutable 缓存，模型和贴图分别使用可重新验证的缓存周期，HTML 始终重新验证。构建检查还会确认 12 个星历资产仍在主包外且主 JS 不含轨迹样本指纹。应用使用井号深链，不需要 SPA 回退规则，也不会把缺失的 GLB 误返回为 `index.html`。本项目依赖 Cloudflare Pages Git 集成，日常交付无需手动部署。
+Cloudflare 会自动读取 `wrangler.jsonc` 中的 `pages_build_output_dir: "./dist"`。如果日志显示 `/bin/sh: pm: not found`，说明构建命令漏写了开头的 `n`，应改回完整的 `npm run build:pages`。`public/_headers` 会让带哈希的 Vite 资源和 `/ephemerides/<mission>-<hash>.json` 使用一年 immutable 缓存，模型和贴图分别使用可重新验证的缓存周期，HTML 始终重新验证。构建会输出全部 65 个真实档案路径；可选环境变量 `PUBLIC_SITE_URL=https://你的域名` 会把 canonical 写成绝对 URL。构建检查会验证每个页面及入口链接，同时确认 12 个星历资产仍在主包外且主 JS 不含轨迹样本指纹。所有已知路径都有实体 HTML，不需要全局 SPA 回退，也不会把缺失的 GLB 误返回为 `index.html`。本项目依赖 Cloudflare Pages Git 集成，日常交付无需手动部署。
 
 ## 操作
 
@@ -124,7 +124,7 @@ Cloudflare 会自动读取 `wrangler.jsonc` 中的 `pages_build_output_dir: "./d
 | 时间滑块 | 0.01x–1000x，1x 约等于「1 秒推进 1 地球日」；倒放按钮让时间回溯 |
 | 底部日期按钮 | 时间机器：跳转任意日期（1950–2050）、回到今天或 2026 起点 |
 | 空格 / R / `/` / Esc | 暂停播放 / 重置相机 / 搜索目标 / 关闭面板 |
-| URL 井号参数 | `#target=<id>&date=<YYYY-MM-DD>&scale=true&lang=en` 深链定位；语言支持 `zh / bilingual / en` |
+| URL 路径 / 井号参数 | `/objects/<id>`、`/missions/<id>` 选择目标；`#date=<YYYY-MM-DD>&scale=true&lang=en` 组合状态。旧 `#target=<id>` 继续兼容 |
 | 语言按钮 | 依次切换双语、纯中文、纯英文 |
 | 跟随 | 相机目标锁定当前天体 |
 | 重置相机 | 回到总览并取消跟随 |
@@ -207,3 +207,11 @@ npm run validate:data
 - 月球贴图：three.js 官方示例资源
 - 银河全景天幕：[ESO / S. Brunier — The Milky Way panorama](https://www.eso.org/public/images/eso0932a/)（CC BY 4.0）
 - 所有贴图均存放于 `public/textures/`，加载失败时自动回退到程序化生成贴图
+
+## 商业化准备
+
+项目具备接入赞助或广告的技术条件，但 NASA/JPL/PDS 数据、机构标识、CC 素材和第三方衍生纹理不能被同一个项目许可证一并重新授权。正式商业运营前需要建立逐文件素材台账，并优先替换或取得来源不完整、用途限制不够明确的纹理许可。完整风险、广告发布门槛和非背书要求见 [商业化与素材合规](docs/商业化与素材合规.md)。
+
+项目现已保留灵活的 `#target=...&date=...` 状态深链，并新增 `/objects/earth#date=...` 与 `/missions/newhorizons#date=...` 一类真实内容页。路径提供独立 HTML、canonical、Open Graph 与结构化数据，Hash 继续承担日期、比例和语言等动态参数。
+
+教育版 / 专业版暂列下一阶段，不在当前版本中承诺。

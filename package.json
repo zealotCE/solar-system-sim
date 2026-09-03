@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/run-ts-validator.mjs scripts/generate-archive-pages.ts",
     "lint": "oxlint",
     "preview": "vite preview --port 4317",
     "test:visual": "playwright test --config playwright.config.ts",
@@ -20,12 +20,13 @@
     "validate:earth-craft-lod": "node scripts/run-ts-validator.mjs scripts/validate-earth-craft-lod.ts",
     "validate:scene-labels": "node scripts/run-ts-validator.mjs scripts/validate-scene-labels.ts",
     "validate:date-scrubber": "node scripts/run-ts-validator.mjs scripts/validate-date-scrubber.ts",
+    "validate:archive-routes": "node scripts/run-ts-validator.mjs scripts/validate-archive-routes.ts",
     "validate:ecliptic-deviation": "node scripts/run-ts-validator.mjs scripts/validate-ecliptic-deviation.ts",
     "validate:kuiper-belt": "node scripts/run-ts-validator.mjs scripts/validate-kuiper-belt.ts",
     "validate:mission-stories": "node scripts/run-ts-validator.mjs scripts/validate-mission-stories.ts",
     "validate:trajectory-semantics": "node scripts/run-ts-validator.mjs scripts/validate-trajectory-semantics.ts",
     "validate:ephemeris": "node scripts/run-ts-validator.mjs scripts/validate-ephemeris.ts",
-    "validate:data": "npm run validate:horizons && npm run validate:trajectory-registry && npm run validate:lod && npm run validate:local-precision-orbit && npm run validate:focused-system-view && npm run validate:earth-craft-lod && npm run validate:scene-labels && npm run validate:date-scrubber && npm run validate:ecliptic-deviation && npm run validate:kuiper-belt && npm run validate:mission-stories && npm run validate:trajectory-semantics && npm run validate:ephemeris",
+    "validate:data": "npm run validate:horizons && npm run validate:trajectory-registry && npm run validate:lod && npm run validate:local-precision-orbit && npm run validate:focused-system-view && npm run validate:earth-craft-lod && npm run validate:scene-labels && npm run validate:date-scrubber && npm run validate:archive-routes && npm run validate:ecliptic-deviation && npm run validate:kuiper-belt && npm run validate:mission-stories && npm run validate:trajectory-semantics && npm run validate:ephemeris",
     "validate:pages": "node scripts/validate-cloudflare-assets.mjs",
     "build:pages": "npm run build && npm run validate:pages",
     "verify": "npm run lint && npm run build:pages && npm run validate:data && npm run test:visual"

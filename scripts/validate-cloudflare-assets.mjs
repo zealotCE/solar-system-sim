@@ -75,6 +75,46 @@ if (mainJavaScript.size > maxMainJavaScriptBytes) {
   )
 }
 
+const archiveManifestPath = resolve(outputDirectory, 'archive-routes.json')
+const archiveRoutes = JSON.parse(await readFile(archiveManifestPath, 'utf8'))
+if (!Array.isArray(archiveRoutes) || !archiveRoutes.length) {
+  throw new Error('dist/archive-routes.json contains no static archive routes.')
+}
+
+const archiveIds = new Set()
+const archivePaths = new Set()
+for (const route of archiveRoutes) {
+  if (
+    typeof route?.id !== 'string' ||
+    typeof route?.kind !== 'string' ||
+    typeof route?.path !== 'string' ||
+    !/^\/(objects|missions)\/[a-z0-9-]+$/u.test(route.path)
+  ) {
+    throw new Error(`Invalid static archive route: ${JSON.stringify(route)}`)
+  }
+  if (archiveIds.has(route.id) || archivePaths.has(route.path)) {
+    throw new Error(`Duplicate static archive route: ${route.id} (${route.path})`)
+  }
+  archiveIds.add(route.id)
+  archivePaths.add(route.path)
+
+  const archivePagePath = resolve(
+    outputDirectory,
+    `${route.path.replace(/^\//u, '')}.html`,
+  )
+  const archivePageHtml = await readFile(archivePagePath, 'utf8')
+  if (
+    !archivePageHtml.includes('data-static-archive-entry') ||
+    !archivePageHtml.includes('data-archive-canonical') ||
+    !archivePageHtml.includes(mainScriptSources[0])
+  ) {
+    throw new Error(`Static archive page is incomplete: ${route.path}`)
+  }
+  if (!indexHtml.includes(`href="${route.path}"`)) {
+    throw new Error(`Root static catalog does not link to ${route.path}`)
+  }
+}
+
 const mainJavaScriptSource = await readFile(mainJavaScript.path, 'utf8')
 const ephemerisAssets = assets.filter(({ path }) => {
   const outputPath = relative(outputDirectory, path)
@@ -115,6 +155,6 @@ console.log(
     mainJavaScript.size /
     1024 /
     1024
-  ).toFixed(2)} MiB); ${ephemerisAssets.length} ephemeris assets remain external with no sample fingerprints in the entry bundle.`,
+  ).toFixed(2)} MiB); ${archiveRoutes.length} static archive routes; ${ephemerisAssets.length} ephemeris assets remain external with no sample fingerprints in the entry bundle.`,
 )
 

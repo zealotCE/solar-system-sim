@@ -36,7 +36,7 @@ An interactive 3D Solar System with a future-observatory aesthetic: eight planet
 - **Minor bodies and comets:** Ceres, Vesta, Bennu, 67P, Halley, Eurybates, Psyche, Apophis, and Arrokoth use offline JPL SBDB orbital elements with 3D orientation, orbits, search, live light-time, and extended science archives
 - **Target search:** fuzzy Chinese/English search; press `/` on desktop
 - **Live readouts:** archive panels compute model-time Sun/Earth distance (AU + km) and one-way light time in an NASA Eyes-style presentation
-- **Shareable deep links:** `#target=jupiter&date=1986-01-24&scale=true&lang=en` encodes target, date, scale, and language
+- **Indexable archive paths and deep links:** the build emits an independent `/objects/<id>` or `/missions/<id>` HTML page for all 65 targets, with a title, summary, canonical URL, Open Graph, JSON-LD, and a no-script archive body. The path chooses the target while the fragment continues to combine date, scale, and language, for example `/objects/earth#date=2028-04-15` or `/missions/newhorizons#date=2028-04-15`. Existing `#target=jupiter&date=1986-01-24&scale=true&lang=en` links remain fully compatible
 - Survey-derived 2K planet textures, Earth clouds, and photographic Saturn rings; procedural fallbacks are used offline
 - A 4K ESO Milky Way panorama at its real galactic-plane inclination plus procedural stars; depth occlusion prevents the sky from drawing through bodies
 - The Sun, eight planets, Pluto, and 26 natural satellites: Moon; Phobos/Deimos; Io/Europa/Ganymede/Callisto/Amalthea; Mimas/Enceladus/Tethys/Dione/Rhea/Titan/Iapetus; Miranda/Ariel/Umbriel/Titania/Oberon; retrograde Triton/Nereid; Charon/Styx/Nix/Kerberos/Hydra
@@ -108,7 +108,7 @@ Cloudflare Pages Git integration:
 - Root directory: empty
 - Node.js: repository `.node-version` pins `22`
 
-Cloudflare reads `pages_build_output_dir: "./dist"` from `wrangler.jsonc`. If the log says `/bin/sh: pm: not found`, the leading `n` is missing from the build command; restore `npm run build:pages`. `public/_headers` gives hashed Vite assets and `/ephemerides/<mission>-<hash>.json` a one-year immutable cache; models and textures use separate revalidation periods, and HTML always revalidates. The build check also confirms that all 12 ephemeris assets remain external and the main JS contains no trajectory sample fingerprint. Hash deep links need no SPA fallback, so a missing GLB is never replaced with `index.html`. Normal releases use Pages Git integration and require no manual deployment.
+Cloudflare reads `pages_build_output_dir: "./dist"` from `wrangler.jsonc`. If the log says `/bin/sh: pm: not found`, the leading `n` is missing from the build command; restore `npm run build:pages`. `public/_headers` gives hashed Vite assets and `/ephemerides/<mission>-<hash>.json` a one-year immutable cache; models and textures use separate revalidation periods, and HTML always revalidates. The build emits all 65 concrete archive paths; the optional `PUBLIC_SITE_URL=https://your-domain.example` environment variable writes absolute canonical URLs. Validation checks every page and discovery link while confirming that all 12 ephemeris assets remain external and the main JS contains no trajectory sample fingerprint. Every known route has real HTML, so no global SPA fallback is needed and a missing GLB is never replaced with `index.html`. Normal releases use Pages Git integration and require no manual deployment.
 
 ## Controls
 
@@ -124,7 +124,7 @@ Cloudflare reads `pages_build_output_dir: "./dist"` from `wrangler.jsonc`. If th
 | Time slider | 0.01×–1000×; 1× advances about one Earth day per second; reverse rewinds |
 | Date button | Pick any 1950–2050 date, return to today, or jump to the 2026 start |
 | Space / R / `/` / Esc | Pause / reset camera / search / close panel |
-| URL hash | `#target=<id>&date=<YYYY-MM-DD>&scale=true&lang=en`; language is `zh`, `bilingual`, or `en` |
+| URL path / hash | `/objects/<id>` or `/missions/<id>` selects a target; `#date=<YYYY-MM-DD>&scale=true&lang=en` combines state. Legacy `#target=<id>` remains supported |
 | Language button | Cycle bilingual, Chinese, and English |
 | Follow | Lock the camera target |
 | Reset camera | Return to overview and release follow |
@@ -208,3 +208,11 @@ npm run validate:data
 - Moon texture: official three.js example asset
 - Milky Way panorama: [ESO / S. Brunier — The Milky Way panorama](https://www.eso.org/public/images/eso0932a/) (CC BY 4.0)
 - Textures are bundled under `public/textures/`; failed loads fall back to procedural textures
+
+## Commercialization readiness
+
+The project can technically support sponsorships or advertising, but NASA/JPL/PDS data, institutional marks, CC material, and third-party derivative textures cannot all be relicensed under one project license. A commercial launch requires a file-level asset ledger and replacement or explicit permission for sources with incomplete provenance or unclear use restrictions. See [Commercialization and asset compliance](docs/commercialization-and-asset-compliance.md) for the full risk register, advertising gates, and non-endorsement requirements.
+
+The project retains flexible `#target=...&date=...` state links and now adds real content pages such as `/objects/earth#date=...` and `/missions/newhorizons#date=...`. Paths provide independent HTML, canonical metadata, Open Graph, and structured data, while fragments continue to carry dynamic date, scale, and language state.
+
+Education and professional tiers are deferred to a later phase and are not promised by the current release.

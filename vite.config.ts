@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react'
 import path from 'node:path'
 import { defineConfig } from 'vite'
 
-export default defineConfig({
+export default defineConfig(({ isPreview }) => ({
+  appType: isPreview ? 'mpa' : 'spa',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -20,4 +21,4 @@ export default defineConfig({
     host: true,
     strictPort: true,
   },
-})
+}))
