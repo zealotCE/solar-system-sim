@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { readHtmlNumber, waitForHtmlNumber } from './visualTest'
+
 test('selected Halley uses its body without a crosshair overlay', async ({
   page,
 }) => {
@@ -183,15 +185,13 @@ test('spacecraft proxy waits for and then hands off to the detailed model', asyn
 
   const label = page.locator('[data-craft-id="juno"]')
   await expect(label).toBeVisible({ timeout: 90_000 })
+  await waitForHtmlNumber(page, 'data-visual-test-camera-distance', 90_000)
   await expect
     .poll(
-      () =>
-        page.evaluate(() =>
-          Math.abs(
-            Number(
-              document.documentElement.dataset.visualTestCameraDistance,
-            ) - 0.0024,
-          ),
+      async () =>
+        Math.abs(
+          (await readHtmlNumber(page, 'data-visual-test-camera-distance')) -
+            0.0024,
         ),
       { timeout: 90_000 },
     )
@@ -233,19 +233,20 @@ test('spacecraft proxy waits for and then hands off to the detailed model', asyn
 test('ISS keeps one local-orbit tangent across the close-up LOD switch', async ({
   page,
 }) => {
+  test.setTimeout(300_000)
   await page.goto(
     '/?visual-test=1#target=iss&date=2026-06-02&scale=true&lang=en',
     { waitUntil: 'domcontentloaded' },
   )
+  // The camera attribute is absent until the first visual-test frame; wait for
+  // a finite value so Number(undefined) cannot masquerade as a distance.
+  await waitForHtmlNumber(page, 'data-visual-test-camera-distance', 180_000)
   await expect
     .poll(
-      () =>
-        page.evaluate(() =>
-          Math.abs(
-            Number(
-              document.documentElement.dataset.visualTestCameraDistance,
-            ) - 0.0024,
-          ),
+      async () =>
+        Math.abs(
+          (await readHtmlNumber(page, 'data-visual-test-camera-distance')) -
+            0.0024,
         ),
       { timeout: 90_000 },
     )
@@ -257,30 +258,28 @@ test('ISS keeps one local-orbit tangent across the close-up LOD switch', async (
     }
     visualWindow.__solarVisualCameraDistance = 1e-6
   })
-  await expect
-    .poll(
-      () =>
-        page.evaluate(
-          () => document.documentElement.dataset.visualTestPrecisionOrbit,
-        ),
-      { timeout: 30_000 },
-    )
-    .toBe('local')
-
-  const tangentDot = await page.evaluate(() => {
-    const parse = (value: string | undefined) =>
-      value?.split(',').map(Number) ?? []
-    const expected = parse(
-      document.documentElement.dataset.visualTestArtificialOrbitTangent,
-    )
-    const actual = parse(
-      document.documentElement.dataset.visualTestPrecisionOrbitTangent,
-    )
-    return expected.reduce(
-      (sum, component, index) => sum + component * (actual[index] ?? 0),
-      0,
-    )
+  const html = page.locator('html')
+  await expect(html).toHaveAttribute('data-visual-test-precision-orbit', 'local', {
+    timeout: 30_000,
   })
+  await expect(html).toHaveAttribute(
+    'data-visual-test-precision-orbit-tangent',
+    /,/u,
+    { timeout: 30_000 },
+  )
+
+  const parseVector = (value: string | null) =>
+    value?.split(',').map(Number) ?? []
+  const expected = parseVector(
+    await html.getAttribute('data-visual-test-artificial-orbit-tangent'),
+  )
+  const actual = parseVector(
+    await html.getAttribute('data-visual-test-precision-orbit-tangent'),
+  )
+  const tangentDot = expected.reduce(
+    (sum, component, index) => sum + component * (actual[index] ?? 0),
+    0,
+  )
   expect(tangentDot).toBeGreaterThan(0.999999)
 })
 
@@ -292,23 +291,14 @@ test('close Pluto system view hides and restores heliocentric orbits', async ({
     { waitUntil: 'domcontentloaded' },
   )
 
-  await expect
-    .poll(
-      () =>
-        page.evaluate(
-          () => document.documentElement.dataset.visualTestFocusedSystem,
-        ),
-      { timeout: 90_000 },
-    )
-    .toBe('pluto')
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          document.documentElement.dataset.visualTestHeliocentricOrbits,
-      ),
-    )
-    .toBe('hidden')
+  const html = page.locator('html')
+  await expect(html).toHaveAttribute('data-visual-test-focused-system', 'pluto', {
+    timeout: 90_000,
+  })
+  await expect(html).toHaveAttribute(
+    'data-visual-test-heliocentric-orbits',
+    'hidden',
+  )
 
   await page.evaluate(() => {
     const visualWindow = window as typeof window & {
@@ -316,21 +306,11 @@ test('close Pluto system view hides and restores heliocentric orbits', async ({
     }
     visualWindow.__solarVisualCameraDistance = 0.05
   })
-  await expect
-    .poll(
-      () =>
-        page.evaluate(
-          () => document.documentElement.dataset.visualTestFocusedSystem,
-        ),
-      { timeout: 30_000 },
-    )
-    .toBe('none')
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          document.documentElement.dataset.visualTestHeliocentricOrbits,
-      ),
-    )
-    .toBe('visible')
+  await expect(html).toHaveAttribute('data-visual-test-focused-system', 'none', {
+    timeout: 30_000,
+  })
+  await expect(html).toHaveAttribute(
+    'data-visual-test-heliocentric-orbits',
+    'visible',
+  )
 })

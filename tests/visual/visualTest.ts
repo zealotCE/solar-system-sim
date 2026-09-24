@@ -2,6 +2,49 @@ import { expect, type Page } from '@playwright/test'
 
 const SETTLE_FRAMES = 60
 const FRAME_SETTLE_TIMEOUT_MS = 180_000
+const FINITE_NUMBER = /^-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/iu
+
+/*
+ * Harness attributes on <html> are read through locators instead of
+ * page.evaluate: main-world evaluation can stall for minutes while SwiftShader
+ * owns the renderer thread, whereas locator assertions keep retrying.
+ */
+export async function readHtmlNumber(page: Page, attribute: string): Promise<number> {
+  const value = await page.locator('html').getAttribute(attribute)
+  return value === null || value === '' ? Number.NaN : Number(value)
+}
+
+/** Waits until a per-frame numeric attribute has been written at least once. */
+export async function waitForHtmlNumber(
+  page: Page,
+  attribute: string,
+  timeout: number,
+): Promise<number> {
+  await expect(page.locator('html')).toHaveAttribute(attribute, FINITE_NUMBER, {
+    timeout,
+  })
+  return readHtmlNumber(page, attribute)
+}
+
+export async function waitForVisualReady(
+  page: Page,
+  timeout: number,
+  expected: { target?: string; date?: string } = {},
+): Promise<void> {
+  const html = page.locator('html')
+  if (expected.target !== undefined) {
+    await expect(html).toHaveAttribute('data-visual-test-target', expected.target, {
+      timeout,
+    })
+  }
+  if (expected.date !== undefined) {
+    await expect(html).toHaveAttribute('data-visual-test-date', expected.date, {
+      timeout,
+    })
+  }
+  // Checked last so "ready" refers to the requested target and date.
+  await expect(html).toHaveAttribute('data-visual-test-state', 'ready', { timeout })
+}
 
 export type VisualScene = {
   target: string
@@ -40,22 +83,15 @@ export async function captureVisualScene(page: Page, scene: VisualScene): Promis
   await page.goto(sceneUrl(scene), { waitUntil: 'domcontentloaded' })
 
   // Selected trajectories, textures, and models must finish before comparison.
-  await expect
-    .poll(() =>
-      page.evaluate(() => ({
-        date: document.documentElement.dataset.visualTestDate,
-        state: document.documentElement.dataset.visualTestState,
-        target: document.documentElement.dataset.visualTestTarget,
-      })),
-      { timeout: 90_000 },
-    )
-    .toEqual({ date: scene.date, state: 'ready', target: scene.target })
-  await expect
-    .poll(
-      () => page.evaluate(() => document.documentElement.dataset.visualTestFrame),
-      { timeout: 90_000 },
-    )
-    .toBe('ready')
+  await waitForVisualReady(page, 90_000, {
+    target: scene.target,
+    date: scene.date,
+  })
+  await expect(page.locator('html')).toHaveAttribute(
+    'data-visual-test-frame',
+    'ready',
+    { timeout: 90_000 },
+  )
   await page.waitForLoadState('networkidle', { timeout: 90_000 })
 
   const canvas = page.locator('.app-shell canvas').first()
@@ -114,15 +150,9 @@ export async function captureVisualScene(page: Page, scene: VisualScene): Promis
     return currentFrame + settleFrames
   }, SETTLE_FRAMES)
   await expect
-    .poll(
-      () =>
-        page.evaluate(
-          () =>
-            (window as typeof window & { __solarVisualFrameCount?: number })
-              .__solarVisualFrameCount ?? 0,
-        ),
-      { timeout: FRAME_SETTLE_TIMEOUT_MS },
-    )
+    .poll(() => readHtmlNumber(page, 'data-visual-test-frame-count'), {
+      timeout: FRAME_SETTLE_TIMEOUT_MS,
+    })
     .toBeGreaterThanOrEqual(stoppedFrame)
   await page.waitForTimeout(100)
 

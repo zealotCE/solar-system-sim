@@ -8,6 +8,7 @@ import {
   getArchiveRouteEntry,
   getArchiveRouteEntryFromPath,
 } from '@/lib/archiveRoutes'
+import { buildDeepLinkHash, resolveDeepLinkDate } from '@/lib/deepLink'
 import { dateInputToSimTime, simTimeToDateInput } from '@/lib/utils'
 
 /**
@@ -15,7 +16,9 @@ import { dateInputToSimTime, simTimeToDateInput } from '@/lib/utils'
  *   #target=jupiter&date=1986-01-24&scale=true&lang=en
  *   /objects/jupiter#date=1986-01-24&scale=true&lang=en
  * Applied once on load; kept up to date with replaceState (no history spam).
- * The date part is only written while paused so playback does not churn the URL.
+ * During playback the date part stays pinned to the last explicit time choice
+ * (requested date, jump, step or pause) so auto-play neither drops it nor
+ * churns the URL.
  */
 export function DeepLink() {
   const {
@@ -26,12 +29,15 @@ export function DeepLink() {
     selectedPlanetId,
     trueScale,
     simTime,
+    orbitEpoch,
     isPlaying,
     languageMode,
   } = useSimulation()
   const applied = useRef(false)
   const archivePathMode = useRef(false)
   const lastWritten = useRef<string | null>(null)
+  const anchorDate = useRef<string | null>(null)
+  const anchorEpoch = useRef(orbitEpoch)
 
   useEffect(() => {
     if (applied.current) return
@@ -42,7 +48,10 @@ export function DeepLink() {
     const date = params.get('date')
     if (date) {
       const nextTime = dateInputToSimTime(date)
-      if (nextTime !== null) setSimulationTime(nextTime)
+      if (nextTime !== null) {
+        setSimulationTime(nextTime)
+        anchorDate.current = simTimeToDateInput(nextTime)
+      }
     }
     if (params.get('scale') === 'true') setTrueScale(true)
     const language = params.get('lang')
@@ -61,12 +70,21 @@ export function DeepLink() {
 
   useEffect(() => {
     if (!applied.current) return
-    const parts: string[] = []
-    if (selectedPlanetId) parts.push(`target=${selectedPlanetId}`)
-    if (trueScale) parts.push('scale=true')
-    if (languageMode !== 'bilingual') parts.push(`lang=${languageMode}`)
-    if (!isPlaying) parts.push(`date=${simTimeToDateInput(simTime)}`)
-    const hash = parts.length ? `#${parts.join('&')}` : ''
+    // orbitEpoch only moves on explicit time actions, never during playback.
+    if (orbitEpoch !== anchorEpoch.current) {
+      anchorEpoch.current = orbitEpoch
+      anchorDate.current = simTimeToDateInput(orbitEpoch)
+    }
+    const hash = buildDeepLinkHash({
+      targetId: selectedPlanetId,
+      trueScale,
+      languageMode,
+      date: resolveDeepLinkDate({
+        isPlaying,
+        currentDate: simTimeToDateInput(simTime),
+        anchorDate: anchorDate.current,
+      }),
+    })
     const routeEntry = getArchiveRouteEntry(selectedPlanetId)
     const pathname = archivePathMode.current
       ? (routeEntry?.path ?? '/')
@@ -75,7 +93,7 @@ export function DeepLink() {
     if (nextUrl === lastWritten.current) return
     lastWritten.current = nextUrl
     history.replaceState(null, '', nextUrl)
-  }, [selectedPlanetId, trueScale, isPlaying, simTime, languageMode])
+  }, [selectedPlanetId, trueScale, isPlaying, simTime, orbitEpoch, languageMode])
 
   useEffect(() => {
     if (!archivePathMode.current) return
