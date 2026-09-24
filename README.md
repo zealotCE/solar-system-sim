@@ -108,7 +108,7 @@ Cloudflare Pages 的 Git 集成设置：
 - Root directory：留空
 - Node.js：仓库 `.node-version` 固定为 `22`
 
-Cloudflare 会自动读取 `wrangler.jsonc` 中的 `pages_build_output_dir: "./dist"`。如果日志显示 `/bin/sh: pm: not found`，说明构建命令漏写了开头的 `n`，应改回完整的 `npm run build:pages`。`public/_headers` 会让带哈希的 Vite 资源和 `/ephemerides/<mission>-<hash>.json` 使用一年 immutable 缓存，模型和贴图分别使用可重新验证的缓存周期，HTML 始终重新验证。构建会输出全部 65 个真实档案路径；可选环境变量 `PUBLIC_SITE_URL=https://你的域名`（在 Cloudflare Pages 项目的环境变量中设置）会把 canonical 写成绝对 URL、写入 `og:url` 并生成 `sitemap.xml`；未设置时只输出不含站点地图的 `robots.txt`。构建检查会验证每个页面及入口链接，同时确认 12 个星历资产仍在主包外且主 JS 不含轨迹样本指纹。所有已知路径都有实体 HTML，不需要全局 SPA 回退，也不会把缺失的 GLB 误返回为 `index.html`。本项目依赖 Cloudflare Pages Git 集成，日常交付无需手动部署。
+Cloudflare 会自动读取 `wrangler.jsonc` 中的 `pages_build_output_dir: "./dist"`。如果日志显示 `/bin/sh: pm: not found`，说明构建命令漏写了开头的 `n`，应改回完整的 `npm run build:pages`。`public/_headers` 会让带哈希的 Vite 资源和 `/ephemerides/<mission>-<hash>.json` 使用一年 immutable 缓存，模型和贴图分别使用可重新验证的缓存周期，HTML 始终重新验证。构建会输出全部 65 个真实档案路径；可选环境变量 `PUBLIC_SITE_URL=https://你的域名`（在 Cloudflare Pages 项目的环境变量中设置）会把 canonical 写成绝对 URL、写入 `og:url` 并生成 `sitemap.xml`；未设置时只输出不含站点地图的 `robots.txt`。构建检查会验证每个页面及入口链接，同时确认 12 个星历资产仍在主包外且主 JS 不含轨迹样本指纹。所有已知路径都有实体 HTML；构建产物根目录的 `404.html` 会关闭 Cloudflare Pages 的隐式 SPA 回退，未知路径和缺失的 GLB 返回 404，而不是 `index.html`。本项目依赖 Cloudflare Pages Git 集成，日常交付无需手动部署。
 
 ## 操作
 

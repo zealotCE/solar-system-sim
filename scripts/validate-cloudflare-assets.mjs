@@ -163,6 +163,20 @@ for (const route of archiveRoutes) {
   }
 }
 
+// Without a top-level 404.html, Cloudflare Pages switches to SPA mode and
+// answers every unknown path, including missing GLB files, with index.html.
+const notFoundHtml = await readFile(resolve(outputDirectory, '404.html'), 'utf8').catch(() => {
+  throw new Error(
+    'dist/404.html is missing; Cloudflare Pages would serve index.html for unknown paths.',
+  )
+})
+if (
+  !notFoundHtml.includes('<meta name="robots" content="noindex" />') ||
+  /<script\b/iu.test(notFoundHtml)
+) {
+  throw new Error('dist/404.html must be a static noindex page without scripts.')
+}
+
 const mainJavaScriptSource = await readFile(mainJavaScript.path, 'utf8')
 const ephemerisAssets = assets.filter(({ path }) => {
   const outputPath = relative(outputDirectory, path)
