@@ -10,6 +10,11 @@ const outputDirectory = resolve('dist')
 const templatePath = resolve(outputDirectory, 'index.html')
 const rootMarker = '<div id="root"></div>'
 const siteOrigin = process.env.PUBLIC_SITE_URL?.trim().replace(/\/+$/u, '') ?? ''
+if (siteOrigin && !/^https?:\/\/[^/\s]+(?:\/[^\s]*)?$/u.test(siteOrigin)) {
+  throw new Error(
+    `PUBLIC_SITE_URL must be an absolute http(s) URL, received ${JSON.stringify(siteOrigin)}.`,
+  )
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -53,6 +58,7 @@ function replaceDocumentMetadata(
     <meta property="og:type" content="website" />
     <meta property="og:title" content="${escapeHtml(title)}" />
     <meta property="og:description" content="${escapeHtml(entry.description)}" />
+${siteOrigin ? `    <meta property="og:url" content="${escapeHtml(canonical)}" />\n` : ''}    <meta name="twitter:card" content="summary" />
     <link data-archive-canonical rel="canonical" href="${escapeHtml(canonical)}" />
     <script type="application/ld+json">${jsonLd}</script>
   </head>`,
@@ -153,6 +159,31 @@ await writeFile(
   )}\n`,
 )
 
+// The sitemap protocol requires absolute URLs, so it is only emitted when the
+// deployment origin is known. robots.txt is always emitted.
+const robotsLines = ['User-agent: *', 'Allow: /']
+if (siteOrigin) {
+  const sitemapUrls = ['/', ...ARCHIVE_ROUTE_ENTRIES.map((entry) => entry.path)]
+  await writeFile(
+    resolve(outputDirectory, 'sitemap.xml'),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${sitemapUrls
+  .map((path) => `  <url><loc>${escapeHtml(canonicalUrl(path))}</loc></url>`)
+  .join('\n')}
+</urlset>
+`,
+  )
+  robotsLines.push('', `Sitemap: ${siteOrigin}/sitemap.xml`)
+} else {
+  console.warn(
+    'PUBLIC_SITE_URL is not set: skipped dist/sitemap.xml (sitemaps need absolute URLs); robots.txt has no Sitemap line and canonicals stay relative.',
+  )
+}
+await writeFile(resolve(outputDirectory, 'robots.txt'), `${robotsLines.join('\n')}\n`)
+
 console.log(
-  `Generated ${ARCHIVE_ROUTE_ENTRIES.length} static archive pages in dist/.`,
+  `Generated ${ARCHIVE_ROUTE_ENTRIES.length} static archive pages in dist/${
+    siteOrigin ? ' with sitemap.xml' : ''
+  }.`,
 )

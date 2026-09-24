@@ -81,6 +81,44 @@ if (!Array.isArray(archiveRoutes) || !archiveRoutes.length) {
   throw new Error('dist/archive-routes.json contains no static archive routes.')
 }
 
+const siteOrigin = process.env.PUBLIC_SITE_URL?.trim().replace(/\/+$/u, '') ?? ''
+const robotsTxt = await readFile(resolve(outputDirectory, 'robots.txt'), 'utf8').catch(
+  () => {
+    throw new Error('dist/robots.txt is missing; the archive generator must emit it.')
+  },
+)
+if (!/^User-agent: \*$/mu.test(robotsTxt) || !/^Allow: \/$/mu.test(robotsTxt)) {
+  throw new Error('dist/robots.txt must allow all crawlers.')
+}
+const sitemapPath = resolve(outputDirectory, 'sitemap.xml')
+const sitemapXml = await readFile(sitemapPath, 'utf8').catch(() => null)
+if (siteOrigin) {
+  if (!sitemapXml) {
+    throw new Error('PUBLIC_SITE_URL is set but dist/sitemap.xml is missing.')
+  }
+  if (!robotsTxt.includes(`Sitemap: ${siteOrigin}/sitemap.xml`)) {
+    throw new Error('dist/robots.txt does not reference the absolute sitemap URL.')
+  }
+  const sitemapLocations = [...sitemapXml.matchAll(/<loc>(.*?)<\/loc>/gu)].map(
+    ([, location]) => location,
+  )
+  const expectedLocations = ['/', ...archiveRoutes.map((route) => route.path)].map(
+    (path) => `${siteOrigin}${path}`,
+  )
+  if (
+    sitemapLocations.length !== expectedLocations.length ||
+    expectedLocations.some((location) => !sitemapLocations.includes(location))
+  ) {
+    throw new Error(
+      `dist/sitemap.xml must list / and all ${archiveRoutes.length} archive routes as absolute URLs.`,
+    )
+  }
+} else if (sitemapXml !== null || /^Sitemap:/mu.test(robotsTxt)) {
+  throw new Error(
+    'Without PUBLIC_SITE_URL no sitemap may be emitted: sitemap URLs must be absolute.',
+  )
+}
+
 const archiveIds = new Set()
 const archivePaths = new Set()
 for (const route of archiveRoutes) {
@@ -109,6 +147,16 @@ for (const route of archiveRoutes) {
     !archivePageHtml.includes(mainScriptSources[0])
   ) {
     throw new Error(`Static archive page is incomplete: ${route.path}`)
+  }
+  const expectedCanonical = `${siteOrigin}${route.path}`
+  if (
+    !archivePageHtml.includes(`rel="canonical" href="${expectedCanonical}"`) ||
+    !archivePageHtml.includes('<meta name="twitter:card" content="summary" />') ||
+    archivePageHtml.includes('property="og:url"') !== Boolean(siteOrigin) ||
+    (siteOrigin &&
+      !archivePageHtml.includes(`<meta property="og:url" content="${expectedCanonical}" />`))
+  ) {
+    throw new Error(`Static archive page has inconsistent canonical/social metadata: ${route.path}`)
   }
   if (!indexHtml.includes(`href="${route.path}"`)) {
     throw new Error(`Root static catalog does not link to ${route.path}`)
@@ -155,6 +203,8 @@ console.log(
     mainJavaScript.size /
     1024 /
     1024
-  ).toFixed(2)} MiB); ${archiveRoutes.length} static archive routes; ${ephemerisAssets.length} ephemeris assets remain external with no sample fingerprints in the entry bundle.`,
+  ).toFixed(2)} MiB); ${archiveRoutes.length} static archive routes${
+    siteOrigin ? ' plus sitemap.xml' : ' (no sitemap: PUBLIC_SITE_URL unset)'
+  }; ${ephemerisAssets.length} ephemeris assets remain external with no sample fingerprints in the entry bundle.`,
 )
 

@@ -211,7 +211,7 @@ npm run validate:data
 
 ## Commercialization readiness
 
-The project can technically support sponsorships or advertising, but NASA/JPL/PDS data, institutional marks, CC material, and third-party derivative textures cannot all be relicensed under one project license. A commercial launch requires a file-level asset ledger and replacement or explicit permission for sources with incomplete provenance or unclear use restrictions. See [Commercialization and asset compliance](docs/commercialization-and-asset-compliance.md) for the full risk register, advertising gates, and non-endorsement requirements.
+The project can technically support sponsorships or advertising, but NASA/JPL/PDS data, institutional marks, CC material, and third-party derivative textures cannot all be relicensed under one project license. A commercial launch requires a file-level asset ledger and replacement or explicit permission for sources with incomplete provenance or unclear use restrictions. See [Commercialization and asset compliance](docs/commercialization-and-asset-compliance.md) for the full risk register, advertising gates, and non-endorsement requirements. The per-file asset ledger is [THIRD_PARTY_ASSETS.md](THIRD_PARTY_ASSETS.md), and third-party attributions plus the non-endorsement statement are in [NOTICE](NOTICE).
 
 The project retains flexible `#target=...&date=...` state links and now adds real content pages such as `/objects/earth#date=...` and `/missions/newhorizons#date=...`. Paths provide independent HTML, canonical metadata, Open Graph, and structured data, while fragments continue to carry dynamic date, scale, and language state.
 

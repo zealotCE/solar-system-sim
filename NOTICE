@@ -1,0 +1,42 @@
+Solar System Observatory / 太阳系动态观测台
+
+This project bundles or loads third-party materials that remain under their
+own terms. They are NOT relicensed by any license chosen for the project's own
+source code. The per-file ledger is THIRD_PARTY_ASSETS.md.
+
+Third-party attributions
+------------------------
+- Spacecraft and small-body 3D models: NASA 3D Resources
+  (https://science.nasa.gov/3d-resources/) and NASA VTAD. Some files are
+  web-optimized derivatives (e.g. Meshopt/WebP compression).
+- Comet 67P shape model: ESA / Rosetta, 67P Shape Models v2.0
+  (https://doi.org/10.26007/34vg-8s07).
+- Apophis shape model: NASA PDS / JPL Radar Shape Model v1.0.
+- Arrokoth shape model: NASA PDS / Porter (2024)
+  (https://doi.org/10.26007/97r3-1e19).
+  Science meshes were converted to compact GLB files.
+- Ephemerides and orbital data: NASA/JPL Horizons, JPL Approximate Positions
+  of the Major Planets, and the JPL Small-Body Database.
+- Sun, Mercury, Venus, Earth (incl. clouds), Mars and Jupiter textures:
+  Solar System Scope (https://www.solarsystemscope.com/textures/), CC BY 4.0,
+  based on NASA data.
+- Milky Way panorama: ESO / S. Brunier
+  (https://www.eso.org/public/images/eso0932a/), CC BY 4.0.
+- Saturn, Uranus, Neptune, Pluto and Saturn-ring textures: threex.planets,
+  derived from Planet Pixel Emporium; used under that source's terms.
+- Moon texture: three.js example asset.
+- Fonts (loaded from Google Fonts): Noto Sans SC, Orbitron, Space Mono,
+  SIL Open Font License 1.1.
+- The Tiangong models are project-authored reconstructions from public
+  CMSA/CNSA references; they are not official engineering CAD.
+
+Non-endorsement
+---------------
+This project is independent. It is not affiliated with, sponsored by, or
+endorsed by NASA, JPL/Caltech, ESA, ESO, CMSA/CNSA, NASA Eyes, or any other
+agency or source organization. Agency names are used only to identify the
+origin of data and media. Agency logos, insignia and seals are not used to
+imply endorsement.
+
+本项目为独立作品，与 NASA、JPL/Caltech、ESA、ESO、CMSA/CNSA 等机构无隶属、
+赞助或背书关系；机构名称仅用于标明数据与素材来源。

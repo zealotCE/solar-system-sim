@@ -10,7 +10,7 @@ The project can be operated commercially, but a file-level asset inventory and r
 
 | Area | Current state | Commercial requirement |
 | --- | --- | --- |
-| Project code | No repository `LICENSE` / `NOTICE` yet | Choose a license for original code without relicensing third-party assets |
+| Project code | `NOTICE` covers third-party attribution and non-endorsement; a `LICENSE` for original code awaits the owner's choice | Choose a license for original code without relicensing third-party assets |
 | NASA 3D models and media | Generally usable in informational, educational, and simulation contexts | Credit the source; never imply NASA endorsement; separately review logos, seals, employee likenesses, and third-party credits |
 | JPL data and media | Horizons and approximate planetary-position data support the model; media may carry Caltech or third-party rights | Preserve provenance; images commonly require `Courtesy NASA/JPL-Caltech`; inspect third-party exceptions |
 | NASA PDS scientific meshes | 67P, Apophis, and Arrokoth derive from scientific archives | Preserve dataset DOI, product-level `CITATION_DESC`, and modification notes |
@@ -30,7 +30,7 @@ Primary references:
 
 ## Gates before advertising
 
-1. Create `THIRD_PARTY_ASSETS.md` with each model, texture, image, and font's local path, source URL, author, license, modifications, and retrieval date.
+1. Complete [`THIRD_PARTY_ASSETS.md`](../THIRD_PARTY_ASSETS.md): the ledger already lists each model, texture, font, and dataset with local path, source, license, and modifications, and flags items needing action; fields marked “待核实” (to be verified) still need source URLs, authors, retrieval dates, and processing parameters.
 2. Replace or obtain permission for Planet Pixel Emporium derivatives and example assets with incomplete provenance.
 3. Separate the original-code license from third-party asset notices; do not claim copyright over NASA/PDS/CC material.
 4. Publish source credits, privacy policy, terms of use, contact information, and non-endorsement language.
@@ -61,7 +61,7 @@ The project now uses a compatible hybrid:
 - legacy `#target=...` links remain compatible;
 - Cloudflare Pages emits real HTML for known paths instead of a global catch-all that could return HTML for missing GLB assets.
 
-The optional build variable `PUBLIC_SITE_URL=https://your-domain.example` produces absolute canonical URLs. Without it, pages use root-relative canonicals that browsers and crawlers resolve against the deployment origin.
+The optional build variable `PUBLIC_SITE_URL=https://your-domain.example` produces absolute canonical URLs, `og:url`, and a `sitemap.xml` covering `/` plus all 65 archive paths, referenced from `robots.txt`. Without it, pages use root-relative canonicals that browsers and crawlers resolve against the deployment origin; because the sitemap protocol requires absolute URLs, the build skips `sitemap.xml` with a warning and `robots.txt` allows all crawlers without a `Sitemap:` line. Set the variable for production deployments.
 
 ## Deferred commercial features
 
